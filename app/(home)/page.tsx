@@ -37,18 +37,12 @@ export default async function HomePage() {
                 Only
               </span>
             </div>
-            <Link
-              href="/sign-in"
-              className="shrink-0 text-orange-400 hover:text-orange-300 font-medium"
-            >
-              Sign in for deals →
-            </Link>
           </div>
         </div>
       </div>
 
       {/* Category Quick-Links */}
-      <div className="bg-white border-b border-gray-200 sticky top-[64px] md:top-[80px] z-30 shadow-sm">
+      <div className="bg-white border-b border-gray-200 sticky top-16 md:top-20 z-30 shadow-sm">
         <div className="container mx-auto px-4 md:px-6 lg:px-8">
           <div className="flex items-center gap-2 overflow-x-auto py-3 scrollbar-none">
             {[

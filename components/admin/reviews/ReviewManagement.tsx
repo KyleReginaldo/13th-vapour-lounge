@@ -1,5 +1,21 @@
 "use client";
 
+import {
+  approveReview,
+  deleteReview,
+  hideReview,
+  unhideReview,
+} from "@/app/actions/reviews";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -43,146 +59,152 @@ import {
   ThumbsUp,
   Trash2,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
-type Review = {
+type ReviewRecord = {
   id: string;
-  product_name: string;
   product_id: string;
-  customer_name: string;
-  customer_email: string;
+  user_id: string;
   rating: number;
-  title: string;
-  comment: string;
-  status: "pending" | "approved" | "hidden";
-  created_at: string;
-  is_verified_purchase: boolean;
-  helpful_count: number;
+  title: string | null;
+  review_text: string | null;
+  is_approved: boolean | null;
+  is_hidden: boolean | null;
+  helpful_count: number | null;
+  verified_purchase: boolean | null;
+  images: string[] | null;
+  created_at: string | null;
+  user: { first_name: string; last_name: string; email: string } | null;
+  product: { id: string; name: string } | null;
 };
 
 type ReviewFilter = "all" | "pending" | "approved" | "hidden";
 
-export function ReviewManagement() {
-  const [reviews, setReviews] = useState<Review[]>([]);
-  const [filteredReviews, setFilteredReviews] = useState<Review[]>([]);
+function getStatus(review: ReviewRecord): "pending" | "approved" | "hidden" {
+  if (review.is_hidden) return "hidden";
+  if (review.is_approved) return "approved";
+  return "pending";
+}
+
+interface ReviewManagementProps {
+  initialReviews: ReviewRecord[];
+}
+
+export function ReviewManagement({ initialReviews }: ReviewManagementProps) {
+  const router = useRouter();
+  const [reviews, setReviews] = useState<ReviewRecord[]>(initialReviews);
+  const [filteredReviews, setFilteredReviews] = useState<ReviewRecord[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<ReviewFilter>("pending");
-  const [selectedReview, setSelectedReview] = useState<Review | null>(null);
+  const [selectedReview, setSelectedReview] = useState<ReviewRecord | null>(
+    null
+  );
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [reviewToDelete, setReviewToDelete] = useState<ReviewRecord | null>(
+    null
+  );
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    async function loadData() {
-      const mockReviews: Review[] = [
-        {
-          id: "r1",
-          product_name: "VUSE Pebble Disposable",
-          product_id: "p1",
-          customer_name: "Juan Dela Cruz",
-          customer_email: "juan@example.com",
-          rating: 5,
-          title: "Best disposable vape!",
-          comment:
-            "Amazing flavor and long-lasting battery. Will definitely buy again. The mint flavor is my absolute favorite.",
-          status: "pending",
-          created_at: new Date(Date.now() - 86400000).toISOString(),
-          is_verified_purchase: true,
-          helpful_count: 3,
-        },
-        {
-          id: "r2",
-          product_name: "VUSE ePod 2+ Device",
-          product_id: "p2",
-          customer_name: "Maria Santos",
-          customer_email: "maria@example.com",
-          rating: 4,
-          title: "Great device, fast charging",
-          comment:
-            "The ePod 2+ is a solid upgrade. Fast charging and great vapor production. Only minor issue is the pod connector.",
-          status: "approved",
-          created_at: new Date(Date.now() - 3 * 86400000).toISOString(),
-          is_verified_purchase: true,
-          helpful_count: 7,
-        },
-        {
-          id: "r3",
-          product_name: "VUSE Go Max",
-          product_id: "p3",
-          customer_name: "Pedro Garcia",
-          customer_email: "pedro@example.com",
-          rating: 2,
-          title: "Disappointing flavor",
-          comment:
-            "The flavor was not as expected. Tastes burnt after a few hours. Not worth the price.",
-          status: "pending",
-          created_at: new Date(Date.now() - 2 * 86400000).toISOString(),
-          is_verified_purchase: false,
-          helpful_count: 1,
-        },
-        {
-          id: "r4",
-          product_name: "ePod Pods - Mint",
-          product_id: "p4",
-          customer_name: "Ana Lopez",
-          customer_email: "ana@example.com",
-          rating: 5,
-          title: "Perfect mint flavor",
-          comment:
-            "Crisp, clean mint flavor. Exactly what I was looking for. Goes well with the ePod 2+.",
-          status: "approved",
-          created_at: new Date(Date.now() - 7 * 86400000).toISOString(),
-          is_verified_purchase: true,
-          helpful_count: 12,
-        },
-        {
-          id: "r5",
-          product_name: "VUSE Vibe Device",
-          product_id: "p5",
-          customer_name: "Carlos Reyes",
-          customer_email: "carlos@example.com",
-          rating: 1,
-          title: "Spam review - do not publish",
-          comment: "Buy cheap products at www.spam-site.com!!!",
-          status: "hidden",
-          created_at: new Date(Date.now() - 5 * 86400000).toISOString(),
-          is_verified_purchase: false,
-          helpful_count: 0,
-        },
-      ];
-
-      setReviews(mockReviews);
-      setFilteredReviews(mockReviews.filter((r) => r.status === "pending"));
-      setIsLoading(false);
-    }
-    loadData();
-  }, []);
+    setReviews(initialReviews);
+  }, [initialReviews]);
 
   useEffect(() => {
     let filtered = reviews;
-    if (statusFilter !== "all")
-      filtered = filtered.filter((r) => r.status === statusFilter);
+    if (statusFilter !== "all") {
+      filtered = filtered.filter((r) => getStatus(r) === statusFilter);
+    }
     if (searchTerm) {
+      const lower = searchTerm.toLowerCase();
       filtered = filtered.filter(
         (r) =>
-          r.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          r.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          r.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          r.comment.toLowerCase().includes(searchTerm.toLowerCase())
+          r.product?.name?.toLowerCase().includes(lower) ||
+          `${r.user?.first_name} ${r.user?.last_name}`
+            .toLowerCase()
+            .includes(lower) ||
+          r.title?.toLowerCase().includes(lower) ||
+          r.review_text?.toLowerCase().includes(lower)
       );
     }
     setFilteredReviews(filtered);
   }, [reviews, searchTerm, statusFilter]);
 
-  const handleUpdateStatus = (id: string, newStatus: Review["status"]) => {
-    setReviews((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, status: newStatus } : r))
-    );
-    setDetailsOpen(false);
+  const handleApprove = async (review: ReviewRecord) => {
+    setIsSubmitting(true);
+    try {
+      const result = await approveReview(review.id);
+      if (result?.success) {
+        toast.success("Review approved");
+        setDetailsOpen(false);
+        router.refresh();
+      } else {
+        toast.error(result?.message ?? "Failed to approve review");
+      }
+    } catch {
+      toast.error("Failed to approve review");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleDeleteReview = (id: string) => {
-    setReviews((prev) => prev.filter((r) => r.id !== id));
-    setDetailsOpen(false);
+  const handleHide = async (review: ReviewRecord) => {
+    setIsSubmitting(true);
+    try {
+      const result = await hideReview(review.id);
+      if (result?.success) {
+        toast.success("Review hidden");
+        setDetailsOpen(false);
+        router.refresh();
+      } else {
+        toast.error(result?.message ?? "Failed to hide review");
+      }
+    } catch {
+      toast.error("Failed to hide review");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleUnhide = async (review: ReviewRecord) => {
+    setIsSubmitting(true);
+    try {
+      const result = await unhideReview(review.id);
+      if (result?.success) {
+        toast.success("Review unhidden");
+        setDetailsOpen(false);
+        router.refresh();
+      } else {
+        toast.error(result?.message ?? "Failed to unhide review");
+      }
+    } catch {
+      toast.error("Failed to unhide review");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!reviewToDelete) return;
+    setIsSubmitting(true);
+    try {
+      const result = await deleteReview(reviewToDelete.id);
+      if (result?.success) {
+        toast.success("Review deleted");
+        setDeleteConfirmOpen(false);
+        setDetailsOpen(false);
+        setReviewToDelete(null);
+        router.refresh();
+      } else {
+        toast.error(result?.message ?? "Failed to delete review");
+      }
+    } catch {
+      toast.error("Failed to delete review");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const renderStars = (rating: number) => {
@@ -194,28 +216,20 @@ export function ReviewManagement() {
     ));
   };
 
+  const pendingCount = reviews.filter((r) => getStatus(r) === "pending").length;
+  const approvedCount = reviews.filter(
+    (r) => getStatus(r) === "approved"
+  ).length;
   const avgRating =
     reviews.length > 0
       ? (
           reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
         ).toFixed(1)
       : "0";
-  const pendingCount = reviews.filter((r) => r.status === "pending").length;
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
-          <p className="text-sm text-muted-foreground">Loading reviews...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
@@ -251,7 +265,7 @@ export function ReviewManagement() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">
-              {reviews.filter((r) => r.status === "approved").length}
+              {approvedCount}
             </div>
             <p className="text-xs text-muted-foreground">Live on site</p>
           </CardContent>
@@ -282,7 +296,7 @@ export function ReviewManagement() {
           value={statusFilter}
           onValueChange={(value: ReviewFilter) => setStatusFilter(value)}
         >
-          <SelectTrigger className="w-[200px]">
+          <SelectTrigger className="w-50">
             <Filter className="h-4 w-4 mr-2" />
             <SelectValue placeholder="Filter" />
           </SelectTrigger>
@@ -300,7 +314,7 @@ export function ReviewManagement() {
           <CardTitle>Customer Reviews</CardTitle>
           <CardDescription>Moderate and manage product reviews</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -314,72 +328,92 @@ export function ReviewManagement() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredReviews.map((review) => (
-                <TableRow key={review.id}>
-                  <TableCell className="font-medium">
-                    {review.product_name}
-                  </TableCell>
-                  <TableCell>
-                    <div className="font-medium">{review.customer_name}</div>
-                    {review.is_verified_purchase && (
-                      <Badge variant="outline" className="text-xs mt-1">
-                        Verified Purchase
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-0.5">
-                      {renderStars(review.rating)}
-                    </div>
-                  </TableCell>
-                  <TableCell className="max-w-64">
-                    <div className="font-medium text-sm">{review.title}</div>
-                    <div className="text-xs text-muted-foreground truncate">
-                      {review.comment}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        review.status === "approved"
-                          ? "default"
-                          : review.status === "pending"
-                            ? "secondary"
-                            : "destructive"
-                      }
-                    >
-                      {review.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {new Date(review.created_at).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setSelectedReview(review);
-                          setDetailsOpen(true);
-                        }}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      {review.status === "pending" && (
-                        <Button
-                          size="sm"
-                          onClick={() =>
-                            handleUpdateStatus(review.id, "approved")
-                          }
-                        >
-                          <CheckCircle className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
+              {filteredReviews.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={7}
+                    className="text-center py-8 text-muted-foreground"
+                  >
+                    No reviews found
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                filteredReviews.map((review) => {
+                  const status = getStatus(review);
+                  const customerName = review.user
+                    ? `${review.user.first_name} ${review.user.last_name}`
+                    : "Unknown";
+                  return (
+                    <TableRow key={review.id}>
+                      <TableCell className="font-medium">
+                        {review.product?.name ?? "Unknown Product"}
+                      </TableCell>
+                      <TableCell>
+                        <div className="font-medium">{customerName}</div>
+                        {review.verified_purchase && (
+                          <Badge variant="outline" className="text-xs mt-1">
+                            Verified Purchase
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-0.5">
+                          {renderStars(review.rating)}
+                        </div>
+                      </TableCell>
+                      <TableCell className="max-w-64">
+                        <div className="font-medium text-sm">
+                          {review.title ?? "(No title)"}
+                        </div>
+                        <div className="text-xs text-muted-foreground truncate">
+                          {review.review_text}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            status === "approved"
+                              ? "default"
+                              : status === "pending"
+                                ? "secondary"
+                                : "destructive"
+                          }
+                        >
+                          {status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {review.created_at
+                          ? new Date(review.created_at).toLocaleDateString()
+                          : "—"}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setSelectedReview(review);
+                              setDetailsOpen(true);
+                            }}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          {status === "pending" && (
+                            <Button
+                              size="sm"
+                              disabled={isSubmitting}
+                              onClick={() => handleApprove(review)}
+                            >
+                              <CheckCircle className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
             </TableBody>
           </Table>
         </CardContent>
@@ -387,100 +421,150 @@ export function ReviewManagement() {
 
       {/* Review Details Dialog */}
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Review Details</DialogTitle>
             <DialogDescription>
-              {selectedReview?.product_name}
+              {selectedReview?.product?.name ?? "Unknown Product"}
             </DialogDescription>
           </DialogHeader>
-          {selectedReview && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex gap-0.5">
-                  {renderStars(selectedReview.rating)}
-                </div>
-                {selectedReview.is_verified_purchase && (
-                  <Badge variant="outline">Verified Purchase</Badge>
-                )}
-              </div>
-              <div>
-                <h3 className="font-bold">{selectedReview.title}</h3>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {selectedReview.comment}
-                </p>
-              </div>
-              <div className="grid grid-cols-2 gap-4 text-sm border-t pt-4">
-                <div>
-                  <span className="text-muted-foreground">Customer:</span>
-                  <div className="font-medium">
-                    {selectedReview.customer_name}
+          {selectedReview &&
+            (() => {
+              const status = getStatus(selectedReview);
+              const customerName = selectedReview.user
+                ? `${selectedReview.user.first_name} ${selectedReview.user.last_name}`
+                : "Unknown";
+              return (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex gap-0.5">
+                      {renderStars(selectedReview.rating)}
+                    </div>
+                    {selectedReview.verified_purchase && (
+                      <Badge variant="outline">Verified Purchase</Badge>
+                    )}
                   </div>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Date:</span>
                   <div>
-                    {new Date(selectedReview.created_at).toLocaleString()}
+                    <h3 className="font-bold">
+                      {selectedReview.title ?? "(No title)"}
+                    </h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {selectedReview.review_text}
+                    </p>
                   </div>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Helpful votes:</span>
-                  <div>
-                    <ThumbsUp className="h-3 w-3 inline mr-1" />
-                    {selectedReview.helpful_count}
+                  <div className="grid grid-cols-2 gap-4 text-sm border-t pt-4">
+                    <div>
+                      <span className="text-muted-foreground">Customer:</span>
+                      <div className="font-medium">{customerName}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {selectedReview.user?.email}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Date:</span>
+                      <div>
+                        {selectedReview.created_at
+                          ? new Date(selectedReview.created_at).toLocaleString()
+                          : "—"}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">
+                        Helpful votes:
+                      </span>
+                      <div>
+                        <ThumbsUp className="h-3 w-3 inline mr-1" />
+                        {selectedReview.helpful_count ?? 0}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Status:</span>
+                      <div className="mt-1">
+                        <Badge
+                          variant={
+                            status === "approved"
+                              ? "default"
+                              : status === "pending"
+                                ? "secondary"
+                                : "destructive"
+                          }
+                        >
+                          {status}
+                        </Badge>
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Status:</span>
-                  <div>
-                    <Badge
-                      variant={
-                        selectedReview.status === "approved"
-                          ? "default"
-                          : selectedReview.status === "pending"
-                            ? "secondary"
-                            : "destructive"
-                      }
-                    >
-                      {selectedReview.status}
-                    </Badge>
-                  </div>
-                </div>
-              </div>
 
-              <div className="flex gap-2 border-t pt-4">
-                {selectedReview.status !== "approved" && (
-                  <Button
-                    className="flex-1"
-                    onClick={() =>
-                      handleUpdateStatus(selectedReview.id, "approved")
-                    }
-                  >
-                    <CheckCircle className="h-4 w-4 mr-2" /> Approve
-                  </Button>
-                )}
-                {selectedReview.status !== "hidden" && (
-                  <Button
-                    variant="secondary"
-                    className="flex-1"
-                    onClick={() =>
-                      handleUpdateStatus(selectedReview.id, "hidden")
-                    }
-                  >
-                    <EyeOff className="h-4 w-4 mr-2" /> Hide
-                  </Button>
-                )}
-                <Button
-                  variant="destructive"
-                  onClick={() => handleDeleteReview(selectedReview.id)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          )}
+                  <div className="flex gap-2 border-t pt-4">
+                    {status !== "approved" && (
+                      <Button
+                        className="flex-1"
+                        disabled={isSubmitting}
+                        onClick={() => handleApprove(selectedReview)}
+                      >
+                        <CheckCircle className="h-4 w-4 mr-2" /> Approve
+                      </Button>
+                    )}
+                    {status === "hidden" ? (
+                      <Button
+                        variant="secondary"
+                        className="flex-1"
+                        disabled={isSubmitting}
+                        onClick={() => handleUnhide(selectedReview)}
+                      >
+                        <Eye className="h-4 w-4 mr-2" /> Unhide
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="secondary"
+                        className="flex-1"
+                        disabled={isSubmitting}
+                        onClick={() => handleHide(selectedReview)}
+                      >
+                        <EyeOff className="h-4 w-4 mr-2" /> Hide
+                      </Button>
+                    )}
+                    <Button
+                      variant="destructive"
+                      disabled={isSubmitting}
+                      onClick={() => {
+                        setReviewToDelete(selectedReview);
+                        setDeleteConfirmOpen(true);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              );
+            })()}
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Review</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to permanently delete this review? This
+              action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSubmitting}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={isSubmitting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

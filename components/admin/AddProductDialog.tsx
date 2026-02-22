@@ -1,9 +1,11 @@
 "use client";
 
+import { getBrands } from "@/app/actions/categories-brands";
 import { createProduct } from "@/app/actions/products";
+import { ImageUpload } from "@/components/shared/ImageUpload";
 import { XMarkIcon } from "@heroicons/react/24/outline";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 interface AddProductDialogProps {
@@ -14,28 +16,80 @@ interface AddProductDialogProps {
 export function AddProductDialog({ isOpen, onClose }: AddProductDialogProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [imageUrl, setImageUrl] = useState("");
+  const [images, setImages] = useState<string[]>([]);
+  const [productName, setProductName] = useState("");
+  const [slug, setSlug] = useState("");
+  const [qrCode, setQrCode] = useState("");
+  const [brands, setBrands] = useState<Array<{ id: string; name: string }>>([]);
+
+  // Fetch brands on mount
+  useEffect(() => {
+    async function loadBrands() {
+      const result = await getBrands();
+      if (result.success && result.data) {
+        setBrands(result.data);
+      }
+    }
+    loadBrands();
+  }, []);
+
+  // Auto-generate slug and QR code from product name
+  const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const name = e.target.value;
+    setProductName(name);
+
+    // Generate slug from name
+    const generatedSlug = name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "");
+
+    setSlug(generatedSlug);
+
+    // Generate QR code from slug (using slug as identifier)
+    setQrCode(generatedSlug);
+  };
 
   if (!isOpen) return null;
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+
+    if (images.length === 0) {
+      toast.error("Please upload at least one product image");
+      return;
+    }
+
     setLoading(true);
 
     const formData = new FormData(e.currentTarget);
     const data = {
       name: formData.get("name") as string,
+      sku: formData.get("sku") as string,
+      description: (formData.get("description") as string) || undefined,
       category: formData.get("category") as string,
+      brand_id: (formData.get("brand_id") as string) || null,
       price: parseFloat(formData.get("price") as string),
+      compare_at_price: formData.get("compare_at_price")
+        ? parseFloat(formData.get("compare_at_price") as string)
+        : undefined,
+      cost_price: formData.get("cost_price")
+        ? parseFloat(formData.get("cost_price") as string)
+        : undefined,
       quantity: parseInt(formData.get("quantity") as string),
-      images: imageUrl ? [imageUrl] : [],
+      images: images,
       low_stock_threshold: formData.get("low_stock_threshold")
         ? parseInt(formData.get("low_stock_threshold") as string)
         : 10,
       critical_stock_threshold: formData.get("critical_stock_threshold")
         ? parseInt(formData.get("critical_stock_threshold") as string)
         : 5,
-      qr_code: (formData.get("qr_code") as string) || undefined,
+      barcode: (formData.get("barcode") as string) || undefined,
+      qr_code: qrCode || undefined, // Use auto-generated QR code
+      product_type: (formData.get("product_type") as string) || undefined,
+      track_inventory: formData.get("track_inventory") === "on",
+      is_published: formData.get("is_published") === "on",
+      is_featured: formData.get("is_featured") === "on",
     };
 
     const result = await createProduct(data);
@@ -44,6 +98,11 @@ export function AddProductDialog({ isOpen, onClose }: AddProductDialogProps) {
 
     if (result.success) {
       toast.success(result.message || "Product created successfully");
+      // Reset form state
+      setProductName("");
+      setSlug("");
+      setQrCode("");
+      setImages([]);
       onClose();
       router.refresh();
     } else {
@@ -61,7 +120,7 @@ export function AddProductDialog({ isOpen, onClose }: AddProductDialogProps) {
         />
 
         {/* Dialog */}
-        <div className="relative bg-white rounded-lg shadow-xl max-w-2xl w-full p-6">
+        <div className="relative bg-white rounded-lg shadow-xl max-w-4xl w-full p-6 max-h-[90vh] flex flex-col">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold text-gray-900">
               Add New Product
@@ -74,126 +133,338 @@ export function AddProductDialog({ isOpen, onClose }: AddProductDialogProps) {
             </button>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+          <form
+            onSubmit={handleSubmit}
+            className="space-y-4 max-h-[70vh] overflow-y-auto"
+          >
+            {/* Basic Information */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">
+                Basic Information
+              </h3>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Product Name *
+                  </label>
+                  <input
+                    type="text"
+                    name="name"
+                    required
+                    value={productName}
+                    onChange={handleNameChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    placeholder="Enter product name"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    SKU *
+                  </label>
+                  <input
+                    type="text"
+                    name="sku"
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    placeholder="e.g., VAPE-001"
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Product Name *
+                  Slug (Auto-generated)
                 </label>
                 <input
                   type="text"
-                  name="name"
-                  required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  placeholder="Enter product name"
+                  value={slug}
+                  readOnly
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-600 cursor-not-allowed"
+                  placeholder="Will be auto-generated from product name"
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  Auto-generated from product name, used in URLs
+                </p>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Category *
+                  Description
                 </label>
-                <select
-                  name="category"
-                  required
+                <textarea
+                  name="description"
+                  rows={3}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-                >
-                  <option value="">Select category</option>
-                  <option value="Vape Devices">Vape Devices</option>
-                  <option value="E-Liquids">E-Liquids</option>
-                  <option value="Coils">Coils</option>
-                  <option value="Accessories">Accessories</option>
-                  <option value="Pods">Pods</option>
-                  <option value="Batteries">Batteries</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Price (₱) *
-                </label>
-                <input
-                  type="number"
-                  name="price"
-                  required
-                  step="0.01"
-                  min="0"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  placeholder="0.00"
+                  placeholder="Product description..."
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Quantity *
-                </label>
-                <input
-                  type="number"
-                  name="quantity"
-                  required
-                  min="0"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  placeholder="0"
-                />
-              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Category *
+                  </label>
+                  <select
+                    name="category"
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  >
+                    <option value="">Select category</option>
+                    <option value="Vape Devices">Vape Devices</option>
+                    <option value="E-Liquids">E-Liquids</option>
+                    <option value="Coils">Coils</option>
+                    <option value="Accessories">Accessories</option>
+                    <option value="Pods">Pods</option>
+                    <option value="Batteries">Batteries</option>
+                  </select>
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Low Stock Threshold
-                </label>
-                <input
-                  type="number"
-                  name="low_stock_threshold"
-                  min="1"
-                  defaultValue="10"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-                />
-              </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Brand
+                  </label>
+                  <select
+                    name="brand_id"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  >
+                    <option value="">Select brand (optional)</option>
+                    {brands.map((brand) => (
+                      <option key={brand.id} value={brand.id}>
+                        {brand.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Critical Stock Threshold
-                </label>
-                <input
-                  type="number"
-                  name="critical_stock_threshold"
-                  min="1"
-                  defaultValue="5"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-                />
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Product Type
+                  </label>
+                  <select
+                    name="product_type"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  >
+                    <option value="">Select type</option>
+                    <option value="physical">Physical Product</option>
+                    <option value="digital">Digital Product</option>
+                    <option value="service">Service</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-4 pt-6">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      name="is_published"
+                      defaultChecked
+                      className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                    />
+                    <span className="text-sm font-medium text-gray-700">
+                      Published
+                    </span>
+                  </label>
+
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      name="is_featured"
+                      className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                    />
+                    <span className="text-sm font-medium text-gray-700">
+                      Featured
+                    </span>
+                  </label>
+                </div>
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Image URL *
-              </label>
-              <input
-                type="url"
-                value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
-                required
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-                placeholder="https://example.com/image.jpg"
+            {/* Pricing */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">
+                Pricing
+              </h3>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Price (₱) *
+                  </label>
+                  <input
+                    type="number"
+                    name="price"
+                    required
+                    step="0.01"
+                    min="0"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    placeholder="0.00"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Compare at Price (₱)
+                  </label>
+                  <input
+                    type="number"
+                    name="compare_at_price"
+                    step="0.01"
+                    min="0"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    placeholder="0.00"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Original price for discount display
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Cost Price (₱)
+                  </label>
+                  <input
+                    type="number"
+                    name="cost_price"
+                    step="0.01"
+                    min="0"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    placeholder="0.00"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Your cost for profit tracking
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Inventory */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">
+                Inventory
+              </h3>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Quantity *
+                  </label>
+                  <input
+                    type="number"
+                    name="quantity"
+                    required
+                    min="0"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    placeholder="0"
+                  />
+                </div>
+
+                <div className="flex items-center pt-6">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      name="track_inventory"
+                      defaultChecked
+                      className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                    />
+                    <span className="text-sm font-medium text-gray-700">
+                      Track Inventory
+                    </span>
+                  </label>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Low Stock Threshold
+                  </label>
+                  <input
+                    type="number"
+                    name="low_stock_threshold"
+                    min="1"
+                    defaultValue="10"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Alert when stock reaches this level
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Critical Stock Threshold
+                  </label>
+                  <input
+                    type="number"
+                    name="critical_stock_threshold"
+                    min="1"
+                    defaultValue="5"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Critical alert threshold
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Identifiers */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">
+                Identifiers & Scanning
+              </h3>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Barcode
+                  </label>
+                  <input
+                    type="text"
+                    name="barcode"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    placeholder="e.g., 1234567890123"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Standard barcode number
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    QR Code (Auto-generated) *
+                  </label>
+                  <input
+                    type="text"
+                    name="qr_code"
+                    value={qrCode}
+                    onChange={(e) => setQrCode(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 bg-gray-50"
+                    placeholder="Auto-generated from slug"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Auto-generated from slug. Scan this to identify product.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Images */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">
+                Product Images *
+              </h3>
+              <ImageUpload
+                value={images}
+                onChange={(urls) =>
+                  setImages(Array.isArray(urls) ? urls : [urls])
+                }
+                multiple
+                maxFiles={5}
+                disabled={loading}
               />
-              <p className="text-xs text-gray-500 mt-1">
-                Enter a valid image URL for the product
-              </p>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                QR Code (Optional)
-              </label>
-              <input
-                type="text"
-                name="qr_code"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-                placeholder="Enter QR code"
-              />
-            </div>
-
-            <div className="flex justify-end gap-3 pt-4 border-t">
+            <div className="flex justify-end gap-3 pt-4 border-t sticky bottom-0 bg-white">
               <button
                 type="button"
                 onClick={onClose}

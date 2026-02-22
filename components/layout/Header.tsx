@@ -2,13 +2,30 @@
 
 import { CartBadge } from "@/components/cart/CartBadge";
 import { CartDrawer } from "@/components/cart/CartDrawer";
+import { SearchAutocomplete } from "@/components/search/SearchAutocomplete";
 import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetHeader } from "@/components/ui/sheet";
+import { type UserWithRole } from "@/lib/auth/roles";
 import { useCartStore } from "@/lib/stores/cart-store";
-import { Menu, Search, ShoppingCart, User } from "lucide-react";
+import {
+  Grid,
+  Home,
+  LogIn,
+  LogOut,
+  Menu,
+  ShoppingCart,
+  Tag,
+  User,
+  Zap,
+} from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
+interface HeaderProps {
+  user: UserWithRole | null;
+}
 
-export const Header = () => {
+export const Header = ({ user }: HeaderProps) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { openCart } = useCartStore();
 
@@ -33,21 +50,19 @@ export const Header = () => {
               {/* Logo */}
               <Link href="/" className="flex items-center gap-2">
                 <div className="text-xl md:text-2xl font-bold gradient-text">
-                  VAPOUR LOUNGE
+                  <Image
+                    src="/logo.jpg"
+                    alt="13th Vapour Lounge Logo"
+                    width={48}
+                    height={48}
+                  />{" "}
                 </div>
               </Link>
             </div>
 
             {/* Center: Search (Desktop Only) */}
             <div className="hidden md:flex flex-1 max-w-2xl mx-8">
-              <div className="relative w-full">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <input
-                  type="search"
-                  placeholder="Search products..."
-                  className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-              </div>
+              <SearchAutocomplete placeholder="Search products..." />
             </div>
 
             {/* Right: Actions */}
@@ -62,25 +77,41 @@ export const Header = () => {
                 <CartBadge />
               </Button>
 
-              <Link href="/profile" className="hidden md:block">
-                <Button variant="ghost" className="gap-2">
-                  <User className="h-5 w-5" />
-                  <span className="text-sm">Account</span>
-                </Button>
-              </Link>
+              {user ? (
+                <Link
+                  href={
+                    user.roles?.name === "admin"
+                      ? "/admin"
+                      : user.roles?.name === "staff"
+                        ? "/admin"
+                        : "/profile"
+                  }
+                  className="hidden md:block"
+                >
+                  <Button variant="ghost" className="gap-2">
+                    <User className="h-5 w-5" />
+                    <span className="text-sm">
+                      {user.roles?.name === "admin" ||
+                      user.roles?.name === "staff"
+                        ? "Admin"
+                        : "Account"}
+                    </span>
+                  </Button>
+                </Link>
+              ) : (
+                <Link href="/sign-in" className="hidden md:block">
+                  <Button variant="ghost" className="gap-2">
+                    <LogIn className="h-5 w-5" />
+                    <span className="text-sm">Sign In</span>
+                  </Button>
+                </Link>
+              )}
             </div>
           </div>
 
           {/* Mobile Search */}
           <div className="md:hidden pb-4">
-            <div className="relative w-full">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <input
-                type="search"
-                placeholder="Search products..."
-                className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-            </div>
+            <SearchAutocomplete placeholder="Search products..." />
           </div>
 
           {/* Desktop Navigation */}
@@ -124,6 +155,94 @@ export const Header = () => {
           </nav>
         </div>
       </header>
+      {/* Mobile Sidebar Drawer */}
+      <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+        <SheetContent side="left" className="w-72 flex flex-col p-0">
+          {/* Sidebar Header */}
+          <SheetHeader className="px-6 py-5 border-b bg-gray-50">
+            {user && (
+              <p className="text-xs text-gray-500 mt-0.5 truncate">
+                {user.email}
+              </p>
+            )}
+          </SheetHeader>
+
+          {/* Navigation Links */}
+          <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
+            {[
+              { href: "/", icon: Home, label: "Home" },
+              { href: "/products", icon: Grid, label: "Shop All" },
+              {
+                href: "/products?category=juice",
+                icon: Zap,
+                label: "Vape Juice",
+              },
+              {
+                href: "/products?category=devices",
+                icon: Zap,
+                label: "Devices",
+              },
+              { href: "/products?tag=new", icon: Tag, label: "New Arrivals" },
+              {
+                href: "/products?tag=sale",
+                icon: Tag,
+                label: "Sale",
+                red: true,
+              },
+            ].map(({ href, icon: Icon, label, red }) => (
+              <Link
+                key={href}
+                href={href}
+                onClick={() => setMobileMenuOpen(false)}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all hover:bg-gray-100 ${
+                  red ? "text-red-500 hover:bg-red-50" : "text-gray-700"
+                }`}
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                {label}
+              </Link>
+            ))}
+          </nav>
+
+          {/* Bottom: Account / Sign In */}
+          <div className="border-t px-3 py-4 space-y-1">
+            {user ? (
+              <>
+                <Link
+                  href={
+                    user.roles?.name === "admin" || user.roles?.name === "staff"
+                      ? "/admin"
+                      : "/profile"
+                  }
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-all"
+                >
+                  <User className="h-4 w-4" />
+                  {user.roles?.name === "admin" || user.roles?.name === "staff"
+                    ? "Admin Dashboard"
+                    : "My Account"}
+                </Link>
+                <button
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex w-full items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-100 transition-all"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sign Out
+                </button>
+              </>
+            ) : (
+              <Link
+                href="/sign-in"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-all"
+              >
+                <LogIn className="h-4 w-4" />
+                Sign In
+              </Link>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </>
   );
 };

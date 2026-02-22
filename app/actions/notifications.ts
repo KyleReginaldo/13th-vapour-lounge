@@ -8,6 +8,15 @@ import {
   type ActionResponse,
 } from "@/lib/actions/utils";
 import { requireRole } from "@/lib/auth/roles";
+import {
+  ageVerificationResultTemplate,
+  lowStockAlertTemplate,
+  orderConfirmationTemplate,
+  orderReadyTemplate,
+  paymentVerifiedTemplate,
+  welcomeEmailTemplate,
+} from "@/lib/email/templates";
+import { sendEmail as sendEmailTransport } from "@/lib/email/transport";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -33,27 +42,28 @@ interface EmailData {
 }
 
 /**
- * Send transactional email using configured service
- * Replace with actual email service (SendGrid, Resend, etc.)
+ * Send transactional email using SMTP
  */
 async function sendEmail(data: EmailData): Promise<boolean> {
-  // TODO: Integrate with actual email service
-  // For now, log to console
-  console.log("📧 Email would be sent:", {
-    to: data.to,
-    subject: data.subject,
-  });
+  try {
+    const result = await sendEmailTransport({
+      to: data.to,
+      subject: data.subject,
+      html: data.html,
+      text: data.text,
+    });
 
-  // Example with Resend:
-  /*
-  const resend = new Resend(process.env.RESEND_API_KEY);
-  await resend.emails.send({
-    from: 'Vapour Lounge <noreply@vapourlounge.com>',
-    ...data
-  });
-  */
+    if (!result.success) {
+      console.error("Failed to send email:", result.error);
+      return false;
+    }
 
-  return true;
+    console.log("✓ Email sent successfully to:", data.to);
+    return true;
+  } catch (err) {
+    console.error("Email sending error:", err);
+    return false;
+  }
 }
 
 /**
@@ -70,11 +80,12 @@ export const sendOrderConfirmationEmail = withErrorHandling(
         *,
         users!customer_id (
           email,
-          first_name
+          first_name,
+          last_name
         ),
         order_items (
           quantity,
-          price,
+          unit_price,
           products (
             name
           )
@@ -88,27 +99,23 @@ export const sendOrderConfirmationEmail = withErrorHandling(
       return error("Order not found", ErrorCode.NOT_FOUND);
     }
 
-    const itemsList = order.order_items
-      .map(
-        (item: any) =>
-          `${item.quantity}x ${item.products.name} - R${item.price * item.quantity}`
-      )
-      .join("<br>");
+    const customerName =
+      `${order.users.first_name || ""} ${order.users.last_name || ""}`.trim() ||
+      "Customer";
 
-    const html = `
-      <h1>Order Confirmation</h1>
-      <p>Hi ${order.users.first_name},</p>
-      <p>Thank you for your order! Your order number is <strong>${order.order_number}</strong>.</p>
-      
-      <h2>Order Details</h2>
-      ${itemsList}
-      
-      <p><strong>Total: R${order.total}</strong></p>
-      
-      <p>Please upload your payment proof to complete your order.</p>
-      
-      <p>Best regards,<br>Vapour Lounge Team</p>
-    `;
+    const items = order.order_items.map((item: any) => ({
+      name: item.products.name,
+      quantity: item.quantity,
+      price: item.unit_price * item.quantity,
+    }));
+
+    const html = orderConfirmationTemplate({
+      customerName,
+      orderNumber: order.order_number,
+      orderTotal: order.total,
+      items,
+      orderUrl: `${process.env.NEXT_PUBLIC_APP_URL}/orders/${order.id}`,
+    });
 
     await sendEmail({
       to: order.users.email,
@@ -134,7 +141,8 @@ export const sendPaymentVerifiedEmail = withErrorHandling(
         *,
         users!customer_id (
           email,
-          first_name
+          first_name,
+          last_name
         )
       `
       )
@@ -145,14 +153,15 @@ export const sendPaymentVerifiedEmail = withErrorHandling(
       return error("Order not found", ErrorCode.NOT_FOUND);
     }
 
-    const html = `
-      <h1>Payment Verified!</h1>
-      <p>Hi ${order.users.first_name},</p>
-      <p>Great news! Your payment for order <strong>${order.order_number}</strong> has been verified.</p>
-      <p>We're now processing your order. You'll receive another email when it's ready for pickup.</p>
-      
-      <p>Best regards,<br>Vapour Lounge Team</p>
-    `;
+    const customerName =
+      `${order.users.first_name || ""} ${order.users.last_name || ""}`.trim() ||
+      "Customer";
+
+    const html = paymentVerifiedTemplate({
+      customerName,
+      orderNumber: order.order_number,
+      amount: order.total,
+    });
 
     await sendEmail({
       to: order.users.email,
@@ -178,7 +187,8 @@ export const sendOrderReadyEmail = withErrorHandling(
         *,
         users!customer_id (
           email,
-          first_name
+          first_name,
+          last_name
         )
       `
       )
@@ -189,20 +199,16 @@ export const sendOrderReadyEmail = withErrorHandling(
       return error("Order not found", ErrorCode.NOT_FOUND);
     }
 
-    const html = `
-      <h1>Your Order is Ready!</h1>
-      <p>Hi ${order.users.first_name},</p>
-      <p>Your order <strong>${order.order_number}</strong> is ready for pickup at our store.</p>
-      
-      <p><strong>Pickup Location:</strong><br>
-      Vapour Lounge<br>
-      123 Main Street<br>
-      Sample, Trece Martires</p>
-      
-      <p>Please bring a valid ID for age verification.</p>
-      
-      <p>Best regards,<br>Vapour Lounge Team</p>
-    `;
+    const customerName =
+      `${order.users.first_name || ""} ${order.users.last_name || ""}`.trim() ||
+      "Customer";
+
+    const html = orderReadyTemplate({
+      customerName,
+      orderNumber: order.order_number,
+      pickupInstructions:
+        "Please bring a valid ID for age verification. Our store is located at 13th Vapour Lounge, 123 Main Street, Trece Martires.",
+    });
 
     await sendEmail({
       to: order.users.email,
@@ -227,7 +233,7 @@ export const sendAgeVerificationEmail = withErrorHandling(
 
     const { data: user, error: fetchError } = await supabase
       .from("users")
-      .select("email, first_name")
+      .select("email, first_name, last_name")
       .eq("id", userId)
       .single();
 
@@ -235,24 +241,14 @@ export const sendAgeVerificationEmail = withErrorHandling(
       return error("User not found", ErrorCode.NOT_FOUND);
     }
 
-    const html = approved
-      ? `
-        <h1>Age Verification Approved</h1>
-        <p>Hi ${user.first_name},</p>
-        <p>Congratulations! Your age verification has been approved.</p>
-        <p>You can now purchase age-restricted products from our store.</p>
-        
-        <p>Best regards,<br>Vapour Lounge Team</p>
-      `
-      : `
-        <h1>Age Verification Rejected</h1>
-        <p>Hi ${user.first_name},</p>
-        <p>Unfortunately, we could not verify your age with the documents provided.</p>
-        ${reason ? `<p><strong>Reason:</strong> ${reason}</p>` : ""}
-        <p>You can submit new documents by visiting your account settings.</p>
-        
-        <p>Best regards,<br>Vapour Lounge Team</p>
-      `;
+    const customerName =
+      `${user.first_name || ""} ${user.last_name || ""}`.trim() || "Customer";
+
+    const html = ageVerificationResultTemplate({
+      customerName,
+      approved,
+      reason,
+    });
 
     await sendEmail({
       to: user.email,
@@ -308,7 +304,7 @@ export const sendReturnStatusEmail = withErrorHandling(
         ${notes ? `<p>Notes: ${notes}</p>` : ""}
         <p>Please bring the items to our store for processing.</p>
         
-        <p>Best regards,<br>Vapour Lounge Team</p>
+        <p>Best regards,<br>13th Vapour Lounge Team</p>
       `
         : `
         <h1>Return Request Rejected</h1>
@@ -318,7 +314,7 @@ export const sendReturnStatusEmail = withErrorHandling(
         
         <p>If you have questions, please contact our support team.</p>
         
-        <p>Best regards,<br>Vapour Lounge Team</p>
+        <p>Best regards,<br>13th Vapour Lounge Team</p>
       `;
 
     await sendEmail({
@@ -335,46 +331,49 @@ export const sendReturnStatusEmail = withErrorHandling(
  * Send low stock alert to admin
  */
 export const sendLowStockAlert = withErrorHandling(
-  async (productId: string): Promise<ActionResponse> => {
+  async (productIds?: string[]): Promise<ActionResponse> => {
     await requireRole(["admin", "staff"]);
     const supabase = await createClient();
 
-    const { data: product } = await supabase
+    // Get low stock products
+    let query = supabase
       .from("products")
-      .select("name, sku, stock_quantity, low_stock_threshold")
-      .eq("id", productId)
-      .single();
+      .select("id, name, sku, stock_quantity, low_stock_threshold")
+      .lte("stock_quantity", 10);
 
-    if (!product) {
-      return error("Product not found", ErrorCode.NOT_FOUND);
+    if (productIds && productIds.length > 0) {
+      query = query.in("id", productIds);
+    }
+
+    const { data: products } = await query;
+
+    if (!products || products.length === 0) {
+      return success(null, "No low stock products found");
     }
 
     // Get admin emails
     const { data: admins } = await supabase
       .from("users")
-      .select("email")
-      .eq("role", "admin");
+      .select("email, roles!inner(name)")
+      .eq("roles.name", "admin");
 
     if (!admins || admins.length === 0) {
       return error("No admin users found", ErrorCode.NOT_FOUND);
     }
 
-    const html = `
-      <h1>Low Stock Alert</h1>
-      <p>The following product is running low on stock:</p>
-      
-      <p><strong>Product:</strong> ${product.name}<br>
-      <strong>SKU:</strong> ${product.sku}<br>
-      <strong>Current Stock:</strong> ${product.stock_quantity}<br>
-      <strong>Threshold:</strong> ${product.low_stock_threshold}</p>
-      
-      <p>Please reorder soon to avoid stockouts.</p>
-    `;
+    const productsData = products.map((p: any) => ({
+      name: p.name,
+      sku: p.sku,
+      currentStock: p.stock_quantity,
+      threshold: p.low_stock_threshold || 10,
+    }));
+
+    const html = lowStockAlertTemplate({ products: productsData });
 
     for (const admin of admins) {
       await sendEmail({
         to: admin.email,
-        subject: `Low Stock Alert - ${product.name}`,
+        subject: `Low Stock Alert - ${products.length} product(s) need restocking`,
         html,
       });
     }
@@ -392,7 +391,7 @@ export const sendWelcomeEmail = withErrorHandling(
 
     const { data: user, error: fetchError } = await supabase
       .from("users")
-      .select("email, first_name")
+      .select("email, first_name, last_name")
       .eq("id", userId)
       .single();
 
@@ -400,28 +399,14 @@ export const sendWelcomeEmail = withErrorHandling(
       return error("User not found", ErrorCode.NOT_FOUND);
     }
 
-    const html = `
-      <h1>Welcome to Vapour Lounge!</h1>
-      <p>Hi ${user.first_name},</p>
-      <p>Thank you for joining Vapour Lounge, Trece Martires's premier vape shop.</p>
-      
-      <h2>Next Steps:</h2>
-      <ol>
-        <li>Complete your age verification to purchase products</li>
-        <li>Browse our extensive product catalog</li>
-        <li>Add items to your cart and checkout</li>
-        <li>Upload payment proof after ordering</li>
-        <li>Pick up your order at our store</li>
-      </ol>
-      
-      <p>If you have any questions, feel free to contact our support team.</p>
-      
-      <p>Happy vaping!<br>Vapour Lounge Team</p>
-    `;
+    const customerName =
+      `${user.first_name || ""} ${user.last_name || ""}`.trim() || "Customer";
+
+    const html = welcomeEmailTemplate({ customerName });
 
     await sendEmail({
       to: user.email,
-      subject: "Welcome to Vapour Lounge!",
+      subject: "Welcome to 13th Vapour Lounge!",
       html,
     });
 

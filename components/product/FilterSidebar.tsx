@@ -19,7 +19,7 @@ import {
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 import { SlidersHorizontal, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export interface FilterOptions {
   categoryIds?: string[];
@@ -61,6 +61,13 @@ const FilterContent = ({
     filters.priceRange || priceRange
   );
 
+  // Sync local price range when filters change externally
+  useEffect(() => {
+    if (filters.priceRange) {
+      setLocalPriceRange(filters.priceRange);
+    }
+  }, [filters.priceRange]);
+
   const handleCategoryToggle = (categoryId: string) => {
     const current = filters.categoryIds || [];
     const updated = current.includes(categoryId)
@@ -85,8 +92,8 @@ const FilterContent = ({
     onFiltersChange({ ...filters, priceRange: localPriceRange });
   };
 
-  const handleInStockToggle = () => {
-    onFiltersChange({ ...filters, inStockOnly: !filters.inStockOnly });
+  const handleInStockToggle = (checked: boolean) => {
+    onFiltersChange({ ...filters, inStockOnly: checked });
   };
 
   const handleClearAll = () => {
@@ -139,7 +146,7 @@ const FilterContent = ({
                   >
                     <Checkbox
                       id={`category-${category.id}`}
-                      checked={filters.categoryIds?.includes(category.id)}
+                      checked={!!filters.categoryIds?.includes(category.id)}
                       onCheckedChange={() => handleCategoryToggle(category.id)}
                     />
                     <Label
@@ -167,7 +174,7 @@ const FilterContent = ({
                   <div key={brand.id} className="flex items-center space-x-2">
                     <Checkbox
                       id={`brand-${brand.id}`}
-                      checked={filters.brandIds?.includes(brand.id)}
+                      checked={!!filters.brandIds?.includes(brand.id)}
                       onCheckedChange={() => handleBrandToggle(brand.id)}
                     />
                     <Label
@@ -220,8 +227,10 @@ const FilterContent = ({
             <div className="flex items-center space-x-2">
               <Checkbox
                 id="in-stock"
-                checked={filters.inStockOnly}
-                onCheckedChange={handleInStockToggle}
+                checked={!!filters.inStockOnly}
+                onCheckedChange={(checked) =>
+                  handleInStockToggle(checked === true)
+                }
               />
               <Label
                 htmlFor="in-stock"

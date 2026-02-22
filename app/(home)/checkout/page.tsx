@@ -1,5 +1,6 @@
 "use client";
 
+import { uploadPaymentProof } from "@/app/actions/images";
 import { CheckoutStepper } from "@/components/checkout/CheckoutStepper";
 import { OrderSummary } from "@/components/checkout/OrderSummary";
 import {
@@ -16,6 +17,7 @@ import { createClient } from "@/lib/supabase/client";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 type Cart = Database["public"]["Tables"]["carts"]["Row"] & {
   product: Database["public"]["Tables"]["products"]["Row"] & {
@@ -53,6 +55,8 @@ export default function CheckoutPage() {
   const [paymentMethod, setPaymentMethod] = useState<
     PaymentMethod | undefined
   >();
+  const [paymentProofFile, setPaymentProofFile] = useState<File | null>(null);
+  const [paymentReferenceNumber, setPaymentReferenceNumber] = useState("");
 
   // Calculations
   const subtotal = cartItems.reduce((sum, item) => {
@@ -158,12 +162,35 @@ export default function CheckoutPage() {
   // Handle payment method selection
   const handlePaymentMethodSelect = (method: PaymentMethod) => {
     setPaymentMethod(method);
+    // Reset payment proof data when method changes
+    if (method === "cash_on_delivery") {
+      setPaymentProofFile(null);
+      setPaymentReferenceNumber("");
+    }
+  };
+
+  // Handle payment proof data changes
+  const handlePaymentDataChange = (data: {
+    file: File | null;
+    referenceNumber: string;
+  }) => {
+    setPaymentProofFile(data.file);
+    setPaymentReferenceNumber(data.referenceNumber);
   };
 
   // Navigate between steps
   const canProceedToNextStep = () => {
     if (currentStep === 1) return !!selectedAddress;
-    if (currentStep === 2) return !!paymentMethod;
+    if (currentStep === 2) {
+      if (!paymentMethod) return false;
+      // For GCash, require payment proof
+      if (paymentMethod === "gcash") {
+        return (
+          paymentProofFile !== null && paymentReferenceNumber.trim().length > 0
+        );
+      }
+      return true;
+    }
     return false;
   };
 
@@ -182,6 +209,17 @@ export default function CheckoutPage() {
   // Submit order
   const handleSubmitOrder = async () => {
     if (!selectedAddress || !paymentMethod) return;
+
+    // Validate GCash payment proof
+    if (
+      paymentMethod === "gcash" &&
+      (!paymentProofFile || !paymentReferenceNumber)
+    ) {
+      toast.error(
+        "Please upload your GCash payment receipt and reference number"
+      );
+      return;
+    }
 
     setIsSubmitting(true);
 
@@ -227,7 +265,7 @@ export default function CheckoutPage() {
 
       if (orderError || !order) {
         console.error("Order creation failed:", orderError);
-        alert("Failed to create order. Please try again.");
+        toast.error("Failed to create order. Please try again.");
         setIsSubmitting(false);
         return;
       }
@@ -255,6 +293,22 @@ export default function CheckoutPage() {
         // Continue anyway, order was created
       }
 
+      // Upload payment proof if GCash
+      if (paymentMethod === "gcash" && paymentProofFile) {
+        const uploadResult = await uploadPaymentProof(
+          order.id,
+          paymentProofFile,
+          paymentReferenceNumber
+        );
+
+        if (!uploadResult.success) {
+          console.error("Payment proof upload failed:", uploadResult.error);
+          toast.error(
+            "Order created but payment proof upload failed. Please upload it from your order details."
+          );
+        }
+      }
+
       // Clear cart
       await supabase.from("carts").delete().eq("user_id", user.id);
 
@@ -262,7 +316,7 @@ export default function CheckoutPage() {
       router.push(`/checkout/confirmation?order=${order.order_number}`);
     } catch (error) {
       console.error("Checkout error:", error);
-      alert("An error occurred. Please try again.");
+      toast.error("An error occurred. Please try again.");
       setIsSubmitting(false);
     }
   };
@@ -280,117 +334,159 @@ export default function CheckoutPage() {
   }
 
   return (
-    <div className="container py-8">
-      {/* Header */}
-      <div className="mb-8">
-        <Button
-          variant="ghost"
-          onClick={() => router.push("/cart")}
-          className="mb-4"
-        >
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Cart
-        </Button>
-        <h1 className="text-3xl font-bold">Checkout</h1>
-      </div>
+    <div className="min-h-screen bg-gray-50">
+      <div className="container max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-10">
+        {/* Header */}
+        <div className="mb-6">
+          <Button
+            variant="ghost"
+            onClick={() => router.push("/cart")}
+            className="mb-4 -ml-2 hover:bg-white"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Cart
+          </Button>
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
+            Checkout
+          </h1>
+        </div>
 
-      {/* Stepper */}
-      <div className="mb-8">
-        <CheckoutStepper steps={CHECKOUT_STEPS} currentStep={currentStep} />
-      </div>
+        {/* Stepper */}
+        <div className="mb-8 bg-white rounded-xl shadow-sm border p-6">
+          <CheckoutStepper steps={CHECKOUT_STEPS} currentStep={currentStep} />
+        </div>
 
-      {/* Main Content */}
-      <div className="grid gap-8 lg:grid-cols-3">
-        {/* Left Column - Forms */}
-        <div className="lg:col-span-2">
-          <div className="rounded-lg border bg-card p-6">
+        {/* Main Content */}
+        <div className="grid gap-6 lg:grid-cols-3">
+          {/* Left Column - Forms */}
+          <div className="lg:col-span-2">
             {/* Step 1: Shipping Address */}
             {currentStep === 1 && (
-              <div>
-                <h2 className="mb-6 text-xl font-semibold">Shipping Address</h2>
-                <ShippingAddressForm
-                  savedAddresses={savedAddresses}
-                  onAddressSelect={handleAddressSelect}
-                  onAddressCreate={handleAddressCreate}
-                  selectedAddressId={selectedAddress?.id}
-                />
+              <div className="bg-white rounded-xl shadow-sm border">
+                <div className="px-6 py-4 border-b bg-blue-50/50">
+                  <h2 className="text-lg font-semibold text-gray-900">
+                    Shipping Address
+                  </h2>
+                  <p className="text-sm text-gray-600 mt-0.5">
+                    Where should we deliver your order?
+                  </p>
+                </div>
+                <div className="p-6">
+                  <ShippingAddressForm
+                    savedAddresses={savedAddresses}
+                    onAddressSelect={handleAddressSelect}
+                    onAddressCreate={handleAddressCreate}
+                    selectedAddressId={selectedAddress?.id}
+                  />
+                </div>
               </div>
             )}
 
             {/* Step 2: Payment Method */}
             {currentStep === 2 && (
-              <div>
-                <h2 className="mb-6 text-xl font-semibold">Payment Method</h2>
-                <PaymentMethodSelector
-                  selectedMethod={paymentMethod}
-                  onMethodSelect={handlePaymentMethodSelect}
-                />
+              <div className="bg-white rounded-xl shadow-sm border">
+                <div className="px-6 py-4 border-b bg-green-50/50">
+                  <h2 className="text-lg font-semibold text-gray-900">
+                    Payment Method
+                  </h2>
+                  <p className="text-sm text-gray-600 mt-0.5">
+                    Choose how you'd like to pay
+                  </p>
+                </div>
+                <div className="p-6">
+                  <PaymentMethodSelector
+                    selectedMethod={paymentMethod}
+                    onMethodSelect={handlePaymentMethodSelect}
+                    onPaymentDataChange={handlePaymentDataChange}
+                  />
+                </div>
               </div>
             )}
 
             {/* Step 3: Review Order */}
             {currentStep === 3 && (
-              <div className="space-y-6">
-                <h2 className="text-xl font-semibold">Review Your Order</h2>
-
-                {/* Shipping Address Review */}
-                <div>
-                  <div className="mb-2 flex items-center justify-between">
-                    <h3 className="font-medium">Shipping Address</h3>
-                    <Button
-                      variant="link"
-                      size="sm"
-                      onClick={() => setCurrentStep(1)}
-                    >
-                      Edit
-                    </Button>
-                  </div>
-                  <div className="rounded-md border bg-muted/50 p-4 text-sm">
-                    <p className="font-medium">{selectedAddress?.full_name}</p>
-                    <p className="text-muted-foreground">
-                      {selectedAddress?.phone}
-                    </p>
-                    <p className="text-muted-foreground">
-                      {selectedAddress?.address_line1}
-                      {selectedAddress?.address_line2 &&
-                        `, ${selectedAddress.address_line2}`}
-                    </p>
-                    <p className="text-muted-foreground">
-                      {selectedAddress?.city}, {selectedAddress?.state_province}{" "}
-                      {selectedAddress?.postal_code}
-                    </p>
-                  </div>
+              <div className="bg-white rounded-xl shadow-sm border">
+                <div className="px-6 py-4 border-b bg-purple-50/50">
+                  <h2 className="text-lg font-semibold text-gray-900">
+                    Review Your Order
+                  </h2>
+                  <p className="text-sm text-gray-600 mt-0.5">
+                    Confirm your details before placing order
+                  </p>
                 </div>
 
-                {/* Payment Method Review */}
-                <div>
-                  <div className="mb-2 flex items-center justify-between">
-                    <h3 className="font-medium">Payment Method</h3>
-                    <Button
-                      variant="link"
-                      size="sm"
-                      onClick={() => setCurrentStep(2)}
-                    >
-                      Edit
-                    </Button>
+                <div className="p-6 space-y-6">
+                  {/* Shipping Address Review */}
+                  <div>
+                    <div className="mb-3 flex items-center justify-between">
+                      <h3 className="font-medium text-gray-900">
+                        Shipping Address
+                      </h3>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setCurrentStep(1)}
+                        className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 h-8"
+                      >
+                        Edit
+                      </Button>
+                    </div>
+                    <div className="rounded-lg border bg-gray-50 p-4 space-y-1">
+                      <p className="font-medium text-gray-900">
+                        {selectedAddress?.full_name}
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        {selectedAddress?.phone}
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        {selectedAddress?.address_line1}
+                        {selectedAddress?.address_line2 &&
+                          `, ${selectedAddress.address_line2}`}
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        {selectedAddress?.city},{" "}
+                        {selectedAddress?.state_province}{" "}
+                        {selectedAddress?.postal_code}
+                      </p>
+                    </div>
                   </div>
-                  <div className="rounded-md border bg-muted/50 p-4 text-sm">
-                    <p className="font-medium capitalize">
-                      {paymentMethod?.replace(/_/g, " ")}
-                    </p>
+
+                  {/* Payment Method Review */}
+                  <div>
+                    <div className="mb-3 flex items-center justify-between">
+                      <h3 className="font-medium text-gray-900">
+                        Payment Method
+                      </h3>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setCurrentStep(2)}
+                        className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 h-8"
+                      >
+                        Edit
+                      </Button>
+                    </div>
+                    <div className="rounded-lg border bg-gray-50 p-4">
+                      <p className="font-medium text-gray-900 capitalize">
+                        {paymentMethod?.replace(/_/g, " ")}
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
             )}
 
             {/* Navigation Buttons */}
-            <div className="mt-8 flex gap-4">
+            <div className="mt-6 flex items-center gap-3">
               {currentStep > 1 && (
                 <Button
                   variant="outline"
                   onClick={handlePreviousStep}
                   disabled={isSubmitting}
+                  size="lg"
+                  className="px-6"
                 >
+                  <ArrowLeft className="mr-2 h-4 w-4" />
                   Previous
                 </Button>
               )}
@@ -399,39 +495,69 @@ export default function CheckoutPage() {
                 <Button
                   onClick={handleNextStep}
                   disabled={!canProceedToNextStep()}
-                  className="ml-auto"
+                  size="lg"
+                  className="ml-auto bg-blue-600 hover:bg-blue-700 px-8"
                 >
                   Continue
+                  <svg
+                    className="ml-2 h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 5l7 7-7 7"
+                    />
+                  </svg>
                 </Button>
               ) : (
                 <Button
                   onClick={handleSubmitOrder}
                   disabled={isSubmitting}
-                  className="ml-auto"
+                  size="lg"
+                  className="ml-auto bg-green-600 hover:bg-green-700 px-8"
                 >
                   {isSubmitting ? (
                     <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Placing Order...
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                      Processing...
                     </>
                   ) : (
-                    "Place Order"
+                    <>
+                      Place Order
+                      <svg
+                        className="ml-2 h-4 w-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M5 13l4 4L19 7"
+                        />
+                      </svg>
+                    </>
                   )}
                 </Button>
               )}
             </div>
           </div>
-        </div>
 
-        {/* Right Column - Order Summary */}
-        <div className="lg:col-span-1">
-          <div className="sticky top-4">
-            <OrderSummary
-              items={cartItems}
-              subtotal={subtotal}
-              tax={tax}
-              shippingCost={shippingCost}
-            />
+          {/* Right Column - Order Summary */}
+          <div className="lg:col-span-1">
+            <div className="sticky top-6">
+              <OrderSummary
+                items={cartItems}
+                subtotal={subtotal}
+                tax={tax}
+                shippingCost={shippingCost}
+              />
+            </div>
           </div>
         </div>
       </div>

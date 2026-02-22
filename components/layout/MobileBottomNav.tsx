@@ -1,19 +1,31 @@
 "use client";
 
+import { type UserWithRole } from "@/lib/auth/roles";
 import { cn } from "@/lib/utils";
 import { Grid, Home, ShoppingCart, User } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const navItems = [
-  { href: "/", icon: Home, label: "Home" },
-  { href: "/products", icon: Grid, label: "Shop" },
-  { href: "/cart", icon: ShoppingCart, label: "Cart" },
-  { href: "/profile", icon: User, label: "Me" },
-];
+interface MobileBottomNavProps {
+  user: UserWithRole | null;
+}
 
-export const MobileBottomNav = () => {
+export const MobileBottomNav = ({ user }: MobileBottomNavProps) => {
   const pathname = usePathname();
+
+  // Determine the profile link based on user role
+  const profileLink = user
+    ? user.roles?.name === "admin" || user.roles?.name === "staff"
+      ? "/admin"
+      : "/profile"
+    : "/sign-in";
+
+  const navItems = [
+    { href: "/", icon: Home, label: "Home" },
+    { href: "/products", icon: Grid, label: "Shop" },
+    { href: "/cart", icon: ShoppingCart, label: "Cart" },
+    { href: profileLink, icon: User, label: "Me" },
+  ];
 
   // Don't show on admin pages
   if (pathname?.startsWith("/admin")) {

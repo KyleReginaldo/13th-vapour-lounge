@@ -269,3 +269,22 @@ export const updateUserRole = withErrorHandling(
     return success(null, `User role updated to ${role.name}`);
   }
 );
+
+/**
+ * Get all roles (Admin only)
+ */
+export const getRoles = withErrorHandling(async (): Promise<ActionResponse> => {
+  await requireRole(["admin"]);
+  const supabase = await createClient();
+
+  const { data, error: fetchError } = await supabase
+    .from("roles")
+    .select("*")
+    .order("name");
+
+  if (fetchError) {
+    return error("Failed to fetch roles", ErrorCode.SERVER_ERROR);
+  }
+
+  return success(data);
+});

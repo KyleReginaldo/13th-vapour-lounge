@@ -1,6 +1,7 @@
 import Footer from "@/components/layout/Footer";
-import { Header } from "@/components/layout/Header";
-import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
+import { HeaderWrapper } from "@/components/layout/HeaderWrapper";
+import { MobileBottomNavWrapper } from "@/components/layout/MobileBottomNavWrapper";
+import { AgeGateProvider } from "@/components/shared/AgeGateProvider";
 
 export default function HomeLayout({
   children,
@@ -9,10 +10,11 @@ export default function HomeLayout({
 }>) {
   return (
     <div className="min-h-screen flex flex-col">
-      <Header />
+      <AgeGateProvider />
+      <HeaderWrapper />
       <main className="flex-1 pb-16 md:pb-0">{children}</main>
       <Footer />
-      <MobileBottomNav />
+      <MobileBottomNavWrapper />
     </div>
   );
 }

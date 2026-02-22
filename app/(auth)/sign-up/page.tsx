@@ -1,673 +1,660 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { signUp } from "@/lib/auth/supabase-auth";
 import {
+  AlertCircle,
   Calendar,
-  Check,
+  CheckCircle2,
   ChevronLeft,
-  ChevronRight,
   Eye,
   EyeOff,
+  Loader2,
   Lock,
   Mail,
   Phone,
+  ShieldCheck,
   User,
+  Zap,
 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useRef, useState } from "react";
+import { useFormStatus } from "react-dom";
 
-export default function SignUpPage() {
+function SubmitButton() {
+  const { pending } = useFormStatus();
+  return (
+    <Button
+      type="submit"
+      disabled={pending}
+      className="flex-1 h-11 text-[14px] font-semibold bg-[#0A0A0A] hover:bg-[#1A1A1A] disabled:opacity-60 text-white rounded-xl border-0 shadow-[0_1px_2px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.06)] hover:-translate-y-px hover:shadow-[0_4px_16px_rgba(0,0,0,0.2)] active:translate-y-0 transition-all duration-150"
+    >
+      {pending ? (
+        <span className="flex items-center gap-2">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Creating account...
+        </span>
+      ) : (
+        "Create Account"
+      )}
+    </Button>
+  );
+}
+
+function SignUpForm() {
+  const searchParams = useSearchParams();
+  const error = searchParams.get("error");
+  const message = searchParams.get("message");
+
   const maxDate = new Date();
   maxDate.setFullYear(maxDate.getFullYear() - 18);
   const maxDateString = maxDate.toISOString().split("T")[0];
 
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [focusedInput, setFocusedInput] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState(1);
+  const [stepErrors, setStepErrors] = useState<string | null>(null);
 
-  const steps = [
-    { id: 1, name: "Personal Info", icon: User },
-    { id: 2, name: "Account Details", icon: Lock },
-    { id: 3, name: "Verification", icon: Check },
-  ];
+  // Accumulated data from each step stored in state so it survives step transitions
+  const [stepOneData, setStepOneData] = useState({
+    firstName: "",
+    lastName: "",
+    middleName: "",
+    suffix: "",
+    contactNumber: "",
+    dateOfBirth: "",
+  });
+  const [stepTwoData, setStepTwoData] = useState({
+    email: "",
+    password: "",
+  });
+
+  const formRef = useRef<HTMLFormElement>(null);
+
+  const inputCls =
+    "h-11 text-[14px] rounded-xl border-[1.5px] border-[#E8E8E8] bg-white placeholder:text-[#CDCDCD] focus-visible:border-[#0A0A0A] focus-visible:ring-0 focus-visible:shadow-[0_0_0_3px_rgba(10,10,10,0.06)] transition-all";
+
+  const readField = (name: string) =>
+    (formRef.current?.elements.namedItem(name) as HTMLInputElement)?.value ??
+    "";
+
+  const handleContinueStep1 = () => {
+    const firstName = readField("firstName");
+    const lastName = readField("lastName");
+    const contactNumber = readField("contactNumber");
+    const dateOfBirth = readField("dateOfBirth");
+
+    if (!firstName || !lastName || !contactNumber || !dateOfBirth) {
+      setStepErrors("Please fill in all required fields.");
+      return;
+    }
+    setStepErrors(null);
+    setStepOneData({
+      firstName,
+      lastName,
+      middleName: readField("middleName"),
+      suffix: readField("suffix"),
+      contactNumber,
+      dateOfBirth,
+    });
+    setCurrentStep(2);
+  };
+
+  const handleContinueStep2 = () => {
+    const email = readField("email");
+    const password = readField("password");
+
+    if (!email || !password) {
+      setStepErrors("Please fill in all required fields.");
+      return;
+    }
+    if (password.length < 6) {
+      setStepErrors("Password must be at least 6 characters.");
+      return;
+    }
+    setStepErrors(null);
+    setStepTwoData({ email, password });
+    setCurrentStep(3);
+  };
 
   return (
-    <div className="min-h-screen flex overflow-hidden bg-linear-to-br from-orange-50 via-red-50 to-orange-100 relative">
-      {/* Animated background gradients */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 left-1/3 w-96 h-96 rounded-full bg-linear-to-br from-primary/20 to-transparent blur-3xl animate-pulse" />
-        <div className="absolute bottom-1/4 right-1/3 w-96 h-96 rounded-full bg-linear-to-tl from-accent/20 to-transparent blur-3xl animate-pulse delay-1000" />
-      </div>
-
-      {/* Left side - Branding */}
-      <div className="hidden lg:flex lg:w-2/5 relative items-center justify-center p-12">
-        <div className="max-w-lg z-10">
-          <div className="space-y-6">
-            <div>
-              <h1 className="text-4xl font-bold text-primary mb-3 tracking-tight">
-                Join Us
-              </h1>
-              <p className="text-lg text-muted-foreground leading-relaxed mb-6">
-                Become part of the Vapour Lounge community
-              </p>
-            </div>
-
-            {/* Progress Steps - Visual */}
-            <div className="space-y-4">
-              {steps.map((step, index) => {
-                const Icon = step.icon;
-                const isComplete = currentStep > step.id;
-                const isCurrent = currentStep === step.id;
-
-                return (
-                  <div key={step.id} className="flex items-center gap-4">
-                    <div
-                      className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 transition-all duration-300 ${
-                        isComplete
-                          ? "bg-linear-to-br from-primary to-accent shadow-lg"
-                          : isCurrent
-                            ? "bg-linear-to-br from-primary/20 to-accent/20 border-2 border-primary"
-                            : "bg-white/50 border-2 border-border"
-                      }`}
-                    >
-                      <Icon
-                        className={`w-6 h-6 ${isComplete || isCurrent ? "text-primary" : "text-muted-foreground"}`}
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <h3
-                        className={`font-semibold transition-colors ${
-                          isComplete || isCurrent
-                            ? "text-foreground"
-                            : "text-muted-foreground"
-                        }`}
-                      >
-                        {step.name}
-                      </h3>
-                      <div className="w-full bg-border rounded-full h-1.5 mt-2">
-                        <div
-                          className={`h-full rounded-full transition-all duration-500 ${
-                            isComplete
-                              ? "w-full bg-linear-to-r from-primary to-accent"
-                              : isCurrent
-                                ? "w-1/2 bg-primary"
-                                : "w-0"
-                          }`}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="pt-8 space-y-3">
-              <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                <div className="w-2 h-2 rounded-full bg-primary" />
-                <p>Exclusive member discounts</p>
-              </div>
-              <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                <div className="w-2 h-2 rounded-full bg-accent" />
-                <p>Early access to new products</p>
-              </div>
-              <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                <div className="w-2 h-2 rounded-full bg-primary" />
-                <p>Rewards program benefits</p>
-              </div>
-            </div>
+    <div className="flex-1 flex flex-col bg-[#FAFAFA]">
+      {/* Mobile logo */}
+      <div className="lg:hidden p-6">
+        <Link href="/" className="inline-flex items-center gap-2">
+          <div className="w-7 h-7 rounded-md bg-[#0A0A0A] flex items-center justify-center">
+            <Zap className="w-3.5 h-3.5 text-white" />
           </div>
-        </div>
+          <span className="font-semibold text-[#0A0A0A] text-base">
+            13th Vapour Lounge
+          </span>
+        </Link>
       </div>
 
-      {/* Right side - Form */}
-      <div className="flex-1 flex items-center justify-center p-6 sm:p-12 relative z-10">
-        <div className="w-full max-w-2xl">
-          {/* Glass morphism card */}
-          <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-6 sm:p-8">
-            {/* Mobile Steps Indicator */}
-            <div className="lg:hidden mb-6">
-              <div className="flex items-center justify-between mb-4">
-                {steps.map((step, index) => (
-                  <div key={step.id} className="flex items-center flex-1">
-                    <div
-                      className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
-                        currentStep >= step.id
-                          ? "bg-linear-to-br from-primary to-accent text-white"
-                          : "bg-border text-muted-foreground"
-                      }`}
-                    >
-                      {currentStep > step.id ? (
-                        <Check className="w-4 h-4" />
-                      ) : (
-                        step.id
-                      )}
-                    </div>
-                    {index < steps.length - 1 && (
-                      <div
-                        className={`flex-1 h-1 mx-2 ${
-                          currentStep > step.id
-                            ? "bg-linear-to-r from-primary to-accent"
-                            : "bg-border"
-                        }`}
-                      />
-                    )}
-                  </div>
+      <div className="flex-1 flex items-center justify-center p-6 sm:p-8">
+        <div className="w-full max-w-[440px]">
+          <div className="bg-white rounded-2xl border border-[#EBEBEB] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-8 sm:p-10">
+            {/* Header */}
+            <div className="mb-7">
+              <div className="flex items-center justify-between mb-1.5">
+                <h1 className="text-2xl font-bold text-[#0F0F0F] tracking-tight">
+                  Create account
+                </h1>
+                <span className="text-[12px] font-medium text-[#ADADAD] bg-[#F5F5F5] px-2.5 py-0.5 rounded-full">
+                  {currentStep} / 3
+                </span>
+              </div>
+              <p className="text-[13px] text-[#8A8A8A] mb-4">
+                {currentStep === 1
+                  ? "Tell us about yourself"
+                  : currentStep === 2
+                    ? "Set up your credentials"
+                    : "Almost there — review and confirm"}
+              </p>
+
+              {/* Progress bar */}
+              <div className="flex gap-1.5">
+                {[1, 2, 3].map((step) => (
+                  <div
+                    key={step}
+                    className={`h-1 flex-1 rounded-full transition-all duration-300 ${
+                      step <= currentStep ? "bg-[#0A0A0A]" : "bg-[#EBEBEB]"
+                    }`}
+                  />
                 ))}
               </div>
-              <p className="text-center text-sm text-muted-foreground">
-                Step {currentStep} of {steps.length}:{" "}
-                {steps[currentStep - 1].name}
-              </p>
             </div>
 
-            <div className="text-center mb-6">
-              <h2 className="text-2xl font-bold text-foreground mb-2">
-                Create Account
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                Join Vapour Lounge and start your journey
-              </p>
-            </div>
+            {/* URL-level error/success */}
+            {error && (
+              <div className="mb-5 flex items-start gap-2.5 rounded-xl bg-red-50 border border-red-100 px-4 py-3">
+                <AlertCircle className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
+                <p className="text-[13px] text-red-700">{error}</p>
+              </div>
+            )}
+            {message && (
+              <div className="mb-5 flex items-start gap-2.5 rounded-xl bg-green-50 border border-green-100 px-4 py-3">
+                <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+                <p className="text-[13px] text-green-700">{message}</p>
+              </div>
+            )}
 
-            <form className="space-y-4" action={signUp}>
-              {/* Step 1: Personal Information */}
+            <form ref={formRef} className="space-y-4" action={signUp}>
+              {/* Hidden fields carrying step 1 & 2 data when on step 3 */}
+              {currentStep === 3 && (
+                <>
+                  <input
+                    type="hidden"
+                    name="firstName"
+                    value={stepOneData.firstName}
+                  />
+                  <input
+                    type="hidden"
+                    name="lastName"
+                    value={stepOneData.lastName}
+                  />
+                  <input
+                    type="hidden"
+                    name="middleName"
+                    value={stepOneData.middleName}
+                  />
+                  <input
+                    type="hidden"
+                    name="suffix"
+                    value={stepOneData.suffix}
+                  />
+                  <input
+                    type="hidden"
+                    name="contactNumber"
+                    value={stepOneData.contactNumber}
+                  />
+                  <input
+                    type="hidden"
+                    name="dateOfBirth"
+                    value={stepOneData.dateOfBirth}
+                  />
+                  <input type="hidden" name="email" value={stepTwoData.email} />
+                  <input
+                    type="hidden"
+                    name="password"
+                    value={stepTwoData.password}
+                  />
+                </>
+              )}
+
+              {/* Step 1: Personal */}
               {currentStep === 1 && (
-                <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div className="relative">
-                      <label
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label
                         htmlFor="firstName"
-                        className="block text-sm font-medium text-foreground mb-2"
+                        className="text-[13px] font-medium text-[#3D3D3D]"
                       >
-                        First Name <span className="text-accent">*</span>
-                      </label>
+                        First name <span className="text-red-400">*</span>
+                      </Label>
                       <div className="relative">
-                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                          <User className="w-4 h-4" />
-                        </div>
-                        <input
+                        <User className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#ADADAD]" />
+                        <Input
                           id="firstName"
                           name="firstName"
                           type="text"
-                          required
-                          onFocus={() => setFocusedInput("firstName")}
-                          onBlur={() => setFocusedInput(null)}
-                          className="w-full pl-10 pr-3 py-2.5 bg-white/50 border-2 border-border rounded-lg focus:outline-none focus:border-primary focus:bg-white transition-all duration-200 placeholder:text-muted-foreground/60 text-sm"
                           placeholder="John"
+                          defaultValue={stepOneData.firstName}
+                          className={`${inputCls} pl-9`}
                         />
-                        {focusedInput === "firstName" && (
-                          <div className="absolute inset-0 rounded-xl bg-primary/5 -z-10 blur-lg" />
-                        )}
                       </div>
                     </div>
-
-                    <div className="relative">
-                      <label
+                    <div className="space-y-1.5">
+                      <Label
                         htmlFor="lastName"
-                        className="block text-sm font-medium text-foreground mb-2"
+                        className="text-[13px] font-medium text-[#3D3D3D]"
                       >
-                        Last Name <span className="text-accent">*</span>
-                      </label>
+                        Last name <span className="text-red-400">*</span>
+                      </Label>
                       <div className="relative">
-                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                          <User className="w-4 h-4" />
-                        </div>
-                        <input
+                        <User className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#ADADAD]" />
+                        <Input
                           id="lastName"
                           name="lastName"
                           type="text"
-                          required
-                          onFocus={() => setFocusedInput("lastName")}
-                          onBlur={() => setFocusedInput(null)}
-                          className="w-full pl-10 pr-3 py-2.5 bg-white/50 border-2 border-border rounded-lg focus:outline-none focus:border-primary focus:bg-white transition-all duration-200 placeholder:text-muted-foreground/60 text-sm"
                           placeholder="Doe"
+                          defaultValue={stepOneData.lastName}
+                          className={`${inputCls} pl-9`}
                         />
-                        {focusedInput === "lastName" && (
-                          <div className="absolute inset-0 rounded-xl bg-primary/5 -z-10 blur-lg" />
-                        )}
                       </div>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="relative">
-                      <label
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label
                         htmlFor="middleName"
-                        className="block text-sm font-medium text-foreground mb-2"
+                        className="text-[13px] font-medium text-[#3D3D3D]"
                       >
-                        Middle Name
-                      </label>
-                      <input
+                        Middle name
+                      </Label>
+                      <Input
                         id="middleName"
                         name="middleName"
                         type="text"
-                        onFocus={() => setFocusedInput("middleName")}
-                        onBlur={() => setFocusedInput(null)}
-                        className="w-full px-3 py-2.5 bg-white/50 border-2 border-border rounded-lg focus:outline-none focus:border-primary focus:bg-white transition-all duration-200 placeholder:text-muted-foreground/60 text-sm"
                         placeholder="Optional"
+                        defaultValue={stepOneData.middleName}
+                        className={`${inputCls} px-4`}
                       />
                     </div>
-
-                    <div className="relative">
-                      <label
+                    <div className="space-y-1.5">
+                      <Label
                         htmlFor="suffix"
-                        className="block text-sm font-medium text-foreground mb-2"
+                        className="text-[13px] font-medium text-[#3D3D3D]"
                       >
                         Suffix
-                      </label>
-                      <input
+                      </Label>
+                      <Input
                         id="suffix"
                         name="suffix"
                         type="text"
-                        onFocus={() => setFocusedInput("suffix")}
-                        onBlur={() => setFocusedInput(null)}
-                        className="w-full px-3 py-2.5 bg-white/50 border-2 border-border rounded-lg focus:outline-none focus:border-primary focus:bg-white transition-all duration-200 placeholder:text-muted-foreground/60 text-sm"
-                        placeholder="Jr., Sr., III"
+                        placeholder="Jr., Sr."
+                        defaultValue={stepOneData.suffix}
+                        className={`${inputCls} px-4`}
                       />
                     </div>
                   </div>
 
-                  <div className="relative">
-                    <label
+                  <div className="space-y-1.5">
+                    <Label
                       htmlFor="contactNumber"
-                      className="block text-sm font-medium text-foreground mb-2"
+                      className="text-[13px] font-medium text-[#3D3D3D]"
                     >
-                      Contact Number <span className="text-accent">*</span>
-                    </label>
+                      Contact number <span className="text-red-400">*</span>
+                    </Label>
                     <div className="relative">
-                      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                        <Phone className="w-4 h-4" />
-                      </div>
-                      <input
+                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#ADADAD]" />
+                      <Input
                         id="contactNumber"
                         name="contactNumber"
                         type="tel"
-                        required
-                        onFocus={() => setFocusedInput("contactNumber")}
-                        onBlur={() => setFocusedInput(null)}
-                        className="w-full pl-10 pr-3 py-2.5 bg-white/50 border-2 border-border rounded-lg focus:outline-none focus:border-primary focus:bg-white transition-all duration-200 placeholder:text-muted-foreground/60 text-sm"
                         placeholder="+63 912 345 6789"
+                        defaultValue={stepOneData.contactNumber}
+                        className={`${inputCls} pl-9`}
                       />
-                      {focusedInput === "contactNumber" && (
-                        <div className="absolute inset-0 rounded-xl bg-primary/5 -z-10 blur-lg" />
-                      )}
                     </div>
                   </div>
 
-                  <div className="relative">
-                    <label
+                  <div className="space-y-1.5">
+                    <Label
                       htmlFor="dateOfBirth"
-                      className="block text-sm font-medium text-foreground mb-2"
+                      className="text-[13px] font-medium text-[#3D3D3D]"
                     >
-                      Date of Birth <span className="text-accent">*</span>
-                    </label>
+                      Date of birth <span className="text-red-400">*</span>
+                    </Label>
                     <div className="relative">
-                      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                        <Calendar className="w-4 h-4" />
-                      </div>
-                      <input
+                      <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#ADADAD]" />
+                      <Input
                         id="dateOfBirth"
                         name="dateOfBirth"
                         type="date"
-                        required
                         max={maxDateString}
-                        onFocus={() => setFocusedInput("dateOfBirth")}
-                        onBlur={() => setFocusedInput(null)}
-                        className="w-full pl-10 pr-3 py-2.5 bg-white/50 border-2 border-border rounded-lg focus:outline-none focus:border-primary focus:bg-white transition-all duration-200 text-sm"
+                        defaultValue={stepOneData.dateOfBirth}
+                        className={`${inputCls} pl-9`}
                       />
-                      {focusedInput === "dateOfBirth" && (
-                        <div className="absolute inset-0 rounded-xl bg-primary/5 -z-10 blur-lg" />
-                      )}
                     </div>
-                    <p className="mt-2 text-xs text-muted-foreground flex items-center gap-1.5">
-                      <svg
-                        className="w-3.5 h-3.5"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
-                      </svg>
+                    <p className="text-[11px] text-[#ADADAD]">
                       You must be 18 years or older
                     </p>
                   </div>
                 </div>
               )}
 
-              {/* Step 2: Account Details */}
+              {/* Step 2: Account */}
               {currentStep === 2 && (
-                <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
-                  <div className="relative">
-                    <label
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <Label
                       htmlFor="email"
-                      className="block text-sm font-medium text-foreground mb-2"
+                      className="text-[13px] font-medium text-[#3D3D3D]"
                     >
-                      Email Address <span className="text-accent">*</span>
-                    </label>
+                      Email address <span className="text-red-400">*</span>
+                    </Label>
                     <div className="relative">
-                      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                        <Mail className="w-4 h-4" />
-                      </div>
-                      <input
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#ADADAD]" />
+                      <Input
                         id="email"
                         name="email"
                         type="email"
                         autoComplete="email"
-                        required
-                        onFocus={() => setFocusedInput("email")}
-                        onBlur={() => setFocusedInput(null)}
-                        className="w-full pl-10 pr-3 py-2.5 bg-white/50 border-2 border-border rounded-lg focus:outline-none focus:border-primary focus:bg-white transition-all duration-200 placeholder:text-muted-foreground/60 text-sm"
                         placeholder="you@example.com"
+                        defaultValue={stepTwoData.email}
+                        className={`${inputCls} pl-9`}
                       />
-                      {focusedInput === "email" && (
-                        <div className="absolute inset-0 rounded-xl bg-primary/5 -z-10 blur-lg" />
-                      )}
                     </div>
                   </div>
 
-                  <div className="relative">
-                    <label
+                  <div className="space-y-1.5">
+                    <Label
                       htmlFor="password"
-                      className="block text-sm font-medium text-foreground mb-2"
+                      className="text-[13px] font-medium text-[#3D3D3D]"
                     >
-                      Password <span className="text-accent">*</span>
-                    </label>
+                      Password <span className="text-red-400">*</span>
+                    </Label>
                     <div className="relative">
-                      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                        <Lock className="w-4 h-4" />
-                      </div>
-                      <input
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#ADADAD]" />
+                      <Input
                         id="password"
                         name="password"
                         type={showPassword ? "text" : "password"}
                         autoComplete="new-password"
-                        required
                         minLength={6}
-                        onFocus={() => setFocusedInput("password")}
-                        onBlur={() => setFocusedInput(null)}
-                        className="w-full pl-10 pr-10 py-2.5 bg-white/50 border-2 border-border rounded-lg focus:outline-none focus:border-primary focus:bg-white transition-all duration-200 placeholder:text-muted-foreground/60 text-sm"
-                        placeholder="Create a strong password"
+                        placeholder="At least 6 characters"
+                        defaultValue={stepTwoData.password}
+                        className={`${inputCls} pl-9 pr-10`}
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[#ADADAD] hover:text-[#3D3D3D] transition-colors"
                       >
                         {showPassword ? (
-                          <EyeOff className="w-5 h-5" />
+                          <EyeOff className="h-4 w-4" />
                         ) : (
-                          <Eye className="w-5 h-5" />
+                          <Eye className="h-4 w-4" />
                         )}
                       </button>
-                      {focusedInput === "password" && (
-                        <div className="absolute inset-0 rounded-xl bg-primary/5 -z-10 blur-lg" />
-                      )}
                     </div>
-                    <p className="mt-2 text-xs text-muted-foreground flex items-center gap-1.5">
-                      <svg
-                        className="w-3.5 h-3.5"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
-                      </svg>
-                      Must be at least 6 characters
-                    </p>
-                  </div>
-
-                  <div className="relative">
-                    <label
-                      htmlFor="confirmPassword"
-                      className="block text-sm font-medium text-foreground mb-2"
-                    >
-                      Confirm Password <span className="text-accent">*</span>
-                    </label>
-                    <div className="relative">
-                      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                        <Lock className="w-4 h-4" />
-                      </div>
-                      <input
-                        id="confirmPassword"
-                        name="confirmPassword"
-                        type={showConfirmPassword ? "text" : "password"}
-                        autoComplete="new-password"
-                        required
-                        minLength={6}
-                        onFocus={() => setFocusedInput("confirmPassword")}
-                        onBlur={() => setFocusedInput(null)}
-                        className="w-full pl-10 pr-10 py-2.5 bg-white/50 border-2 border-border rounded-lg focus:outline-none focus:border-primary focus:bg-white transition-all duration-200 placeholder:text-muted-foreground/60 text-sm"
-                        placeholder="Re-enter your password"
-                      />
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setShowConfirmPassword(!showConfirmPassword)
-                        }
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        {showConfirmPassword ? (
-                          <EyeOff className="w-4 h-4" />
-                        ) : (
-                          <Eye className="w-4 h-4" />
-                        )}
-                      </button>
-                      {focusedInput === "confirmPassword" && (
-                        <div className="absolute inset-0 rounded-xl bg-primary/5 -z-10 blur-lg" />
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Password strength indicator */}
-                  <div className="space-y-2">
-                    <div className="flex gap-2">
-                      <div className="h-1.5 flex-1 rounded-full bg-border">
-                        <div className="h-full w-1/3 rounded-full bg-accent"></div>
-                      </div>
-                      <div className="h-1.5 flex-1 rounded-full bg-border"></div>
-                      <div className="h-1.5 flex-1 rounded-full bg-border"></div>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Password strength: Weak
+                    <p className="text-[11px] text-[#ADADAD]">
+                      Minimum 6 characters
                     </p>
                   </div>
                 </div>
               )}
 
-              {/* Step 3: Terms & Verification */}
+              {/* Step 3: Confirm */}
               {currentStep === 3 && (
-                <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
-                  <div className="bg-linear-to-br from-primary/5 to-accent/5 rounded-xl p-4 border border-primary/10">
-                    <h3 className="font-semibold text-foreground mb-2 flex items-center gap-2 text-sm">
-                      <Check className="w-4 h-4 text-primary" />
-                      Almost there!
-                    </h3>
-                    <p className="text-xs text-muted-foreground">
-                      Please review and accept our terms to complete your
-                      registration.
-                    </p>
+                <div className="space-y-5">
+                  {/* Summary card */}
+                  <div className="rounded-xl border border-[#EBEBEB] bg-[#FAFAFA] divide-y divide-[#EBEBEB] overflow-hidden text-[13px]">
+                    <div className="px-4 py-2.5 flex gap-2">
+                      <span className="text-[#ADADAD] w-28 shrink-0">Name</span>
+                      <span className="font-medium text-[#0F0F0F]">
+                        {stepOneData.firstName} {stepOneData.lastName}
+                        {stepOneData.suffix ? `, ${stepOneData.suffix}` : ""}
+                      </span>
+                    </div>
+                    <div className="px-4 py-2.5 flex gap-2">
+                      <span className="text-[#ADADAD] w-28 shrink-0">
+                        Email
+                      </span>
+                      <span className="font-medium text-[#0F0F0F] truncate">
+                        {stepTwoData.email}
+                      </span>
+                    </div>
+                    <div className="px-4 py-2.5 flex gap-2">
+                      <span className="text-[#ADADAD] w-28 shrink-0">
+                        Contact
+                      </span>
+                      <span className="font-medium text-[#0F0F0F]">
+                        {stepOneData.contactNumber}
+                      </span>
+                    </div>
+                    <div className="px-4 py-2.5 flex gap-2">
+                      <span className="text-[#ADADAD] w-28 shrink-0">
+                        Birthday
+                      </span>
+                      <span className="font-medium text-[#0F0F0F]">
+                        {stepOneData.dateOfBirth}
+                      </span>
+                    </div>
                   </div>
 
-                  <div className="space-y-3">
-                    <label className="flex items-start gap-2.5 cursor-pointer group p-3 rounded-lg hover:bg-primary/5 transition-colors">
+                  <div className="space-y-3.5">
+                    <label className="flex items-start gap-3 cursor-pointer">
                       <input
-                        id="terms"
-                        name="terms"
                         type="checkbox"
+                        name="ageConfirm"
                         required
-                        className="mt-0.5 w-4 h-4 rounded border-2 border-border text-primary focus:ring-2 focus:ring-primary/20 focus:ring-offset-0 transition-all"
+                        className="mt-0.5 h-4 w-4 rounded border-[#E0E0E0] accent-[#0A0A0A]"
                       />
-                      <span className="text-sm text-foreground">
+                      <span className="text-[13px] text-[#6A6A6A] leading-relaxed">
+                        I confirm that I am{" "}
+                        <strong className="text-[#0A0A0A]">
+                          18 years or older
+                        </strong>
+                      </span>
+                    </label>
+
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        name="termsConfirm"
+                        required
+                        className="mt-0.5 h-4 w-4 rounded border-[#E0E0E0] accent-[#0A0A0A]"
+                      />
+                      <span className="text-[13px] text-[#6A6A6A] leading-relaxed">
                         I agree to the{" "}
                         <Link
-                          href="#"
-                          className="text-primary hover:text-primary/80 font-medium underline underline-offset-2"
+                          href="/terms"
+                          className="font-medium text-[#0A0A0A] underline underline-offset-2"
                         >
-                          Terms and Conditions
+                          Terms of Service
                         </Link>{" "}
                         and{" "}
                         <Link
-                          href="#"
-                          className="text-primary hover:text-primary/80 font-medium underline underline-offset-2"
+                          href="/privacy"
+                          className="font-medium text-[#0A0A0A] underline underline-offset-2"
                         >
                           Privacy Policy
                         </Link>
                       </span>
                     </label>
-
-                    <label className="flex items-start gap-2.5 cursor-pointer group p-3 rounded-lg hover:bg-primary/5 transition-colors">
-                      <input
-                        type="checkbox"
-                        className="mt-0.5 w-4 h-4 rounded border-2 border-border text-primary focus:ring-2 focus:ring-primary/20 focus:ring-offset-0 transition-all"
-                      />
-                      <span className="text-xs text-muted-foreground">
-                        I want to receive marketing emails about new products
-                        and exclusive offers
-                      </span>
-                    </label>
-
-                    <label className="flex items-start gap-2.5 cursor-pointer group p-3 rounded-lg hover:bg-primary/5 transition-colors">
-                      <input
-                        type="checkbox"
-                        className="mt-0.5 w-4 h-4 rounded border-2 border-border text-primary focus:ring-2 focus:ring-primary/20 focus:ring-offset-0 transition-all"
-                      />
-                      <span className="text-xs text-muted-foreground">
-                        I confirm that I am 18 years of age or older
-                      </span>
-                    </label>
-                  </div>
-
-                  {/* Trust badges */}
-                  <div className="grid grid-cols-3 gap-3 pt-3">
-                    <div className="text-center p-2.5 rounded-lg bg-white/50 border border-border">
-                      <div className="w-8 h-8 mx-auto mb-1.5 rounded-full bg-linear-to-br from-primary/20 to-accent/20 flex items-center justify-center">
-                        <svg
-                          className="w-4 h-4 text-primary"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-                          />
-                        </svg>
-                      </div>
-                      <p className="text-xs font-medium text-foreground">
-                        Secure
-                      </p>
-                    </div>
-                    <div className="text-center p-2.5 rounded-lg bg-white/50 border border-border">
-                      <div className="w-8 h-8 mx-auto mb-1.5 rounded-full bg-linear-to-br from-primary/20 to-accent/20 flex items-center justify-center">
-                        <svg
-                          className="w-4 h-4 text-primary"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-                          />
-                        </svg>
-                      </div>
-                      <p className="text-xs font-medium text-foreground">
-                        Protected
-                      </p>
-                    </div>
-                    <div className="text-center p-3 rounded-xl bg-white/50 border border-border">
-                      <div className="w-10 h-10 mx-auto mb-2 rounded-full bg-linear-to-br from-primary/20 to-accent/20 flex items-center justify-center">
-                        <svg
-                          className="w-5 h-5 text-primary"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M13 10V3L4 14h7v7l9-11h-7z"
-                          />
-                        </svg>
-                      </div>
-                      <p className="text-xs font-medium text-foreground">
-                        Fast
-                      </p>
-                    </div>
                   </div>
                 </div>
               )}
 
-              {/* Navigation Buttons */}
-              <div className="flex gap-3 pt-3">
+              {/* Step validation error */}
+              {stepErrors && (
+                <div className="flex items-center gap-2 rounded-lg bg-red-50 border border-red-100 px-3 py-2.5">
+                  <AlertCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
+                  <p className="text-[12px] text-red-700">{stepErrors}</p>
+                </div>
+              )}
+
+              {/* Navigation */}
+              <div className="flex gap-2.5 pt-2">
                 {currentStep > 1 && (
-                  <button
+                  <Button
                     type="button"
-                    onClick={() => setCurrentStep(currentStep - 1)}
-                    className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white border-2 border-border rounded-lg hover:border-primary hover:bg-primary/5 transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-primary/20 font-medium text-foreground text-sm"
+                    variant="outline"
+                    onClick={() => {
+                      setStepErrors(null);
+                      setCurrentStep(currentStep - 1);
+                    }}
+                    className="h-11 px-4 text-[14px] font-medium rounded-xl border-[1.5px] border-[#E8E8E8] text-[#3D3D3D] hover:bg-[#F5F5F5]"
                   >
-                    <ChevronLeft className="w-4 h-4" />
-                    Back
-                  </button>
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
                 )}
 
-                {currentStep < 3 ? (
-                  <button
+                {currentStep === 1 && (
+                  <Button
                     type="button"
-                    onClick={() => setCurrentStep(currentStep + 1)}
-                    className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 bg-linear-to-r from-primary to-accent text-white font-semibold rounded-lg shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-primary/20 text-sm"
+                    onClick={handleContinueStep1}
+                    className="flex-1 h-11 text-[14px] font-semibold bg-[#0A0A0A] hover:bg-[#1A1A1A] text-white rounded-xl border-0 shadow-[0_1px_2px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.06)] hover:-translate-y-px hover:shadow-[0_4px_16px_rgba(0,0,0,0.2)] active:translate-y-0 transition-all duration-150"
                   >
-                    Continue
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                ) : (
-                  <button
-                    type="submit"
-                    className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 bg-linear-to-r from-primary to-accent text-white font-semibold rounded-lg shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-primary/20 text-sm"
-                  >
-                    <Check className="w-4 h-4" />
-                    Create Account
-                  </button>
+                    Continue →
+                  </Button>
                 )}
+
+                {currentStep === 2 && (
+                  <Button
+                    type="button"
+                    onClick={handleContinueStep2}
+                    className="flex-1 h-11 text-[14px] font-semibold bg-[#0A0A0A] hover:bg-[#1A1A1A] text-white rounded-xl border-0 shadow-[0_1px_2px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.06)] hover:-translate-y-px hover:shadow-[0_4px_16px_rgba(0,0,0,0.2)] active:translate-y-0 transition-all duration-150"
+                  >
+                    Continue →
+                  </Button>
+                )}
+
+                {currentStep === 3 && <SubmitButton />}
               </div>
             </form>
 
-            {/* Sign in link */}
-            <p className="mt-6 text-center text-sm text-muted-foreground">
-              Already have an account?{" "}
-              <Link
-                href="/sign-in"
-                className="font-semibold text-primary hover:text-primary/80 transition-colors"
+            {/* Divider */}
+            <div className="relative my-6">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-[#F0F0F0]" />
+              </div>
+              <div className="relative flex justify-center">
+                <span className="bg-white px-3 text-[12px] text-[#C0C0C0]">
+                  Already have an account?
+                </span>
+              </div>
+            </div>
+
+            <Link href="/sign-in">
+              <Button
+                variant="outline"
+                className="w-full h-11 text-[14px] font-medium rounded-xl border-[1.5px] border-[#E8E8E8] text-[#3D3D3D] hover:bg-[#F5F5F5] hover:border-[#D0D0D0] transition-all"
               >
                 Sign in instead
-              </Link>
-            </p>
+              </Button>
+            </Link>
           </div>
 
-          {/* Mobile footer */}
-          <div className="lg:hidden mt-8 text-center">
-            <p className="text-sm text-muted-foreground">
-              © 2026 Vapour Lounge. Premium vaping products.
-            </p>
-          </div>
+          <p className="mt-5 text-center text-[11px] text-[#C0C0C0]">
+            Must be 18+ to purchase vape products
+          </p>
         </div>
       </div>
+    </div>
+  );
+}
+
+export default function SignUpPage() {
+  return (
+    <div className="min-h-screen flex">
+      <div className="hidden lg:flex lg:w-[52%] xl:w-[55%] relative bg-[#0A0A0A] flex-col overflow-hidden">
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute -top-40 -left-40 w-[600px] h-[600px] rounded-full bg-white/[0.02] blur-3xl" />
+          <div className="absolute top-1/2 -translate-y-1/2 -right-24 w-[450px] h-[450px] rounded-full bg-white/[0.03] blur-3xl" />
+          <div className="absolute bottom-10 left-1/4 w-[300px] h-[300px] rounded-full bg-white/[0.02] blur-2xl" />
+        </div>
+        <div
+          className="absolute inset-0 opacity-[0.03] pointer-events-none"
+          style={{
+            backgroundImage:
+              "linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)",
+            backgroundSize: "40px 40px",
+          }}
+        />
+        <div className="relative z-10 flex flex-col h-full p-12 xl:p-16">
+          <Link href="/" className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center">
+              <Zap className="w-4 h-4 text-[#0A0A0A]" />
+            </div>
+            <span className="text-white font-semibold text-lg tracking-tight">
+              13th Vapour Lounge
+            </span>
+          </Link>
+          <div className="flex-1 flex flex-col justify-center max-w-sm">
+            <div className="mb-10">
+              <div className="inline-flex items-center gap-2 bg-white/[0.06] border border-white/[0.08] rounded-full px-3 py-1 mb-6">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                <span className="text-[12px] text-white/60 font-medium tracking-wide uppercase">
+                  Join our community
+                </span>
+              </div>
+              <h2 className="text-4xl xl:text-5xl font-bold text-white leading-[1.1] tracking-tight mb-4">
+                Create your
+                <br />
+                <span className="text-white/40">free account.</span>
+              </h2>
+              <p className="text-[15px] text-white/50 leading-relaxed">
+                Get access to exclusive member deals, order tracking, and our
+                full premium catalog.
+              </p>
+            </div>
+            <div className="space-y-3">
+              {[
+                {
+                  icon: User,
+                  label: "Personal info",
+                  sub: "Name, contact & birthday",
+                },
+                {
+                  icon: Mail,
+                  label: "Account details",
+                  sub: "Email & secure password",
+                },
+                {
+                  icon: ShieldCheck,
+                  label: "Confirm & create",
+                  sub: "Review and agree to terms",
+                },
+              ].map(({ icon: Icon, label, sub }) => (
+                <div key={label} className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-white/[0.06] border border-white/[0.08] flex items-center justify-center shrink-0">
+                    <Icon className="w-4 h-4 text-white/70" />
+                  </div>
+                  <div>
+                    <p className="text-[13px] font-medium text-white/80">
+                      {label}
+                    </p>
+                    <p className="text-[12px] text-white/30">{sub}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <p className="text-[12px] text-white/25">
+            &copy; 2026 13th Vapour Lounge. All rights reserved.
+          </p>
+        </div>
+      </div>
+      <Suspense fallback={<div className="flex-1 bg-[#FAFAFA]" />}>
+        <SignUpForm />
+      </Suspense>
     </div>
   );
 }

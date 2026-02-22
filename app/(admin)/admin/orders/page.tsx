@@ -6,11 +6,13 @@ export default async function OrdersPage() {
 
   const { data: orders, error } = await supabase
     .from("orders")
-    .select(`
+    .select(
+      `
       *,
       users(first_name, last_name, email),
-      order_items(product_name, quantity, unit_price)
-    `)
+      order_items(id, product_name, sku, quantity, unit_price, subtotal, variant_attributes)
+    `
+    )
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -18,8 +20,8 @@ export default async function OrdersPage() {
   }
 
   return (
-    <div className="container mx-auto p-6">
+    <div className="p-4 md:p-8">
       <OrdersManagement orders={orders || []} />
-    </div>  
+    </div>
   );
 }

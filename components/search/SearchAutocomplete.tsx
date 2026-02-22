@@ -1,5 +1,6 @@
 "use client";
 
+import { autocompleteProducts } from "@/app/actions/products";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -57,27 +58,29 @@ export const SearchAutocomplete = ({
 
     setIsLoading(true);
     const timeout = setTimeout(async () => {
-      // TODO: Replace with actual search API call
-      // For now, mock data
-      const mockSuggestions: SearchSuggestion[] = [
-        {
-          id: "1",
-          type: "product",
-          name: "Vape Juice - Strawberry 30ml",
-          slug: "vape-juice-strawberry-30ml",
-          image: "/images/products/vape-juice.jpg",
-          price: 299.99,
-        },
-        {
-          id: "2",
-          type: "category",
-          name: "Vape Juice",
-          slug: "vape-juice",
-        },
-      ];
+      try {
+        const result = await autocompleteProducts(query);
 
-      setSuggestions(mockSuggestions);
-      setIsLoading(false);
+        if (result.success && result.data) {
+          const products = result.data as any[];
+          const suggestions: SearchSuggestion[] = products.map((p: any) => ({
+            id: p.id,
+            type: "product" as const,
+            name: p.name,
+            slug: p.slug,
+            image: p.product_images?.[0]?.url || undefined,
+          }));
+
+          setSuggestions(suggestions);
+        } else {
+          setSuggestions([]);
+        }
+      } catch (error) {
+        console.error("Search error:", error);
+        setSuggestions([]);
+      } finally {
+        setIsLoading(false);
+      }
     }, 300);
 
     return () => clearTimeout(timeout);

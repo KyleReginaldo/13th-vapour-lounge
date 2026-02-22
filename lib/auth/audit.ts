@@ -45,7 +45,8 @@ type AuditEntityType =
   | "return"
   | "age_verification"
   | "payment_proof"
-  | "product_variant";
+  | "product_variant"
+  | "setting";
 
 interface AuditLogParams {
   action: AuditAction;

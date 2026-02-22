@@ -9,15 +9,15 @@ export default async function ProductsPage() {
     .select(
       `
       *,
-      brands(name),
-      categories(name),
+      brand:brands!brand_id(name),
+      category:categories!category_id(name),
       product_images(url)
     `
     )
     .order("created_at", { ascending: false });
 
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-8">
       <ProductsManagement products={(products as any) ?? []} />
     </div>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { Check } from "lucide-react";
+import { Check, CreditCard, MapPin, Package } from "lucide-react";
 
 interface Step {
   id: number;
@@ -14,84 +14,88 @@ interface CheckoutStepperProps {
   currentStep: number;
 }
 
+const STEP_ICONS = {
+  1: MapPin,
+  2: CreditCard,
+  3: Package,
+};
+
 export function CheckoutStepper({ steps, currentStep }: CheckoutStepperProps) {
   return (
     <nav aria-label="Progress">
-      <ol className="flex items-center justify-center">
-        {steps.map((step, stepIdx) => (
-          <li
-            key={step.id}
-            className={cn(
-              "relative",
-              stepIdx !== steps.length - 1 ? "pr-8 sm:pr-20" : ""
-            )}
-          >
-            {/* Connector Line */}
-            {stepIdx !== steps.length - 1 && (
-              <div
-                className="absolute left-full top-4 -ml-2 hidden h-0.5 w-full sm:block"
-                aria-hidden="true"
-              >
+      <ol className="flex items-center justify-between">
+        {steps.map((step, stepIdx) => {
+          const Icon = STEP_ICONS[step.id as keyof typeof STEP_ICONS];
+          const isComplete = currentStep > step.id;
+          const isCurrent = currentStep === step.id;
+
+          return (
+            <li
+              key={step.id}
+              className="relative flex flex-1 flex-col items-center"
+            >
+              {/* Connector Line */}
+              {stepIdx !== steps.length - 1 && (
+                <div
+                  className="absolute left-[calc(50%+1.5rem)] top-5 h-0.5 w-[calc(100%-3rem)] hidden sm:block"
+                  aria-hidden="true"
+                >
+                  <div
+                    className={cn(
+                      "h-full transition-all duration-300",
+                      isComplete ? "bg-green-500" : "bg-gray-200"
+                    )}
+                  />
+                </div>
+              )}
+
+              {/* Step Content */}
+              <div className="relative z-10 flex flex-col items-center">
+                {/* Circle with Icon */}
                 <div
                   className={cn(
-                    "h-full transition-colors",
-                    currentStep > stepIdx + 1 ? "bg-primary" : "bg-muted"
-                  )}
-                />
-              </div>
-            )}
-
-            {/* Step Circle */}
-            <div className="group relative flex flex-col items-center">
-              <span className="flex h-9 items-center" aria-hidden="true">
-                <span
-                  className={cn(
-                    "relative z-10 flex h-8 w-8 items-center justify-center rounded-full border-2 transition-colors",
-                    currentStep > stepIdx + 1
-                      ? "border-primary bg-primary"
-                      : currentStep === stepIdx + 1
-                        ? "border-primary bg-background"
-                        : "border-muted bg-muted"
+                    "flex h-10 w-10 items-center justify-center rounded-full transition-all duration-300",
+                    isComplete
+                      ? "bg-green-500 text-white shadow-md"
+                      : isCurrent
+                        ? "bg-blue-600 text-white shadow-lg scale-110"
+                        : "bg-white border-2 border-gray-300 text-gray-400"
                   )}
                 >
-                  {currentStep > stepIdx + 1 ? (
-                    <Check className="h-4 w-4 text-primary-foreground" />
+                  {isComplete ? (
+                    <Check className="h-5 w-5" strokeWidth={3} />
+                  ) : Icon ? (
+                    <Icon
+                      className="h-5 w-5"
+                      strokeWidth={isCurrent ? 2.5 : 2}
+                    />
                   ) : (
-                    <span
-                      className={cn(
-                        "text-sm font-semibold",
-                        currentStep === stepIdx + 1
-                          ? "text-primary"
-                          : "text-muted-foreground"
-                      )}
-                    >
-                      {step.id}
-                    </span>
+                    <span className="text-sm font-bold">{step.id}</span>
                   )}
-                </span>
-              </span>
+                </div>
 
-              {/* Step Label */}
-              <span className="mt-2 flex flex-col items-center">
-                <span
-                  className={cn(
-                    "text-xs font-medium sm:text-sm",
-                    currentStep >= stepIdx + 1
-                      ? "text-foreground"
-                      : "text-muted-foreground"
+                {/* Label */}
+                <div className="mt-2.5 text-center">
+                  <p
+                    className={cn(
+                      "text-sm font-semibold transition-colors",
+                      isCurrent || isComplete
+                        ? "text-gray-900"
+                        : "text-gray-500"
+                    )}
+                  >
+                    {step.name}
+                  </p>
+                  {step.description && (
+                    <p className="text-xs text-gray-500 mt-0.5 hidden sm:block">
+                      {step.description}
+                    </p>
                   )}
-                >
-                  {step.name}
-                </span>
-                {step.description && (
-                  <span className="mt-0.5 hidden text-xs text-muted-foreground sm:block">
-                    {step.description}
-                  </span>
-                )}
-              </span>
-            </div>
-          </li>
-        ))}
+                </div>
+              </div>
+            </li>
+          );
+        })}
       </ol>
     </nav>
   );

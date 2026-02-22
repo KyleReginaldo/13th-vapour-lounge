@@ -45,7 +45,7 @@ export async function seedShopSettings(): Promise<ActionResponse> {
     const settings = [
       {
         key: "shop_name",
-        value: { name: "Vapour Lounge" },
+        value: { name: "13th Vapour Lounge" },
       },
       {
         key: "business_hours",

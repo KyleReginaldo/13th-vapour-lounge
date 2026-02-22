@@ -1,5 +1,20 @@
 "use client";
 
+import {
+  createSupplier,
+  deleteSupplier,
+  updateSupplier,
+} from "@/app/actions/suppliers";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,6 +32,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -25,7 +41,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { createClient } from "@/lib/supabase/client";
 import {
   Building2,
   Edit3,
@@ -35,37 +50,56 @@ import {
   Phone,
   Plus,
   Search,
+  Trash2,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 type Supplier = {
   id: string;
   name: string;
-  contact_person: string;
-  email: string;
-  phone: string;
-  address: string;
-  city: string;
-  status: "active" | "inactive";
-  total_orders: number;
-  total_spent: number;
-  last_order_date?: string;
-  notes?: string;
-  created_at: string;
+  contact_person: string | null;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  city: string | null;
+  is_active: boolean | null;
+  notes?: string | null;
+  created_at: string | null;
+  updated_at?: string | null;
 };
 
-export function SuppliersManagement() {
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [filteredSuppliers, setFilteredSuppliers] = useState<Supplier[]>([]);
+type SupplierWithStats = Supplier & {
+  purchase_orders?: Array<{
+    id: string;
+    total_amount?: number;
+    status: string;
+    created_at: string;
+  }>;
+};
+
+export function SuppliersManagement({
+  initialSuppliers = [],
+}: {
+  initialSuppliers?: Supplier[];
+}) {
+  const router = useRouter();
+  const [suppliers, setSuppliers] = useState<Supplier[]>(initialSuppliers);
+  const [filteredSuppliers, setFilteredSuppliers] =
+    useState<Supplier[]>(initialSuppliers);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(
     null
   );
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Form state for adding a supplier
+  // Form state for adding/editing a supplier
   const [formData, setFormData] = useState({
     name: "",
     contact_person: "",
@@ -77,139 +111,142 @@ export function SuppliersManagement() {
   });
 
   useEffect(() => {
-    async function loadData() {
-      const supabase = createClient();
-
-      // Try to load from DB, fallback to mock data
-      const { data: dbSuppliers } = await supabase
-        .from("suppliers")
-        .select("*")
-        .order("name");
-
-      if (dbSuppliers && dbSuppliers.length > 0) {
-        const mapped: Supplier[] = dbSuppliers.map((s: any) => ({
-          id: s.id,
-          name: s.name,
-          contact_person: s.contact_person || s.contact_name || "",
-          email: s.email || "",
-          phone: s.phone || "",
-          address: s.address || "",
-          city: s.city || "",
-          status: s.status || "active",
-          total_orders: 0,
-          total_spent: 0,
-          last_order_date: undefined,
-          notes: s.notes || "",
-          created_at: s.created_at,
-        }));
-        setSuppliers(mapped);
-        setFilteredSuppliers(mapped);
-      } else {
-        const mockSuppliers: Supplier[] = [
-          {
-            id: "sup1",
-            name: "VUSE Philippines",
-            contact_person: "Mark Tan",
-            email: "orders@vuse.ph",
-            phone: "+63 917 123 4567",
-            address: "BGC, Taguig",
-            city: "Metro Manila",
-            status: "active",
-            total_orders: 24,
-            total_spent: 450000,
-            last_order_date: new Date(Date.now() - 2 * 86400000).toISOString(),
-            notes:
-              "Primary supplier for all VUSE products. Weekly deliveries on Mondays.",
-            created_at: new Date(Date.now() - 180 * 86400000).toISOString(),
-          },
-          {
-            id: "sup2",
-            name: "E-Liquid Direct",
-            contact_person: "Sarah Lim",
-            email: "supply@eliquiddirect.com",
-            phone: "+63 918 234 5678",
-            address: "Makati Avenue",
-            city: "Makati",
-            status: "active",
-            total_orders: 12,
-            total_spent: 180000,
-            last_order_date: new Date(Date.now() - 5 * 86400000).toISOString(),
-            created_at: new Date(Date.now() - 120 * 86400000).toISOString(),
-          },
-          {
-            id: "sup3",
-            name: "Vape Accessories Co.",
-            contact_person: "James Yu",
-            email: "james@vapeacc.ph",
-            phone: "+63 919 345 6789",
-            address: "Quezon City",
-            city: "Metro Manila",
-            status: "inactive",
-            total_orders: 5,
-            total_spent: 35000,
-            last_order_date: new Date(Date.now() - 60 * 86400000).toISOString(),
-            created_at: new Date(Date.now() - 90 * 86400000).toISOString(),
-          },
-        ];
-        setSuppliers(mockSuppliers);
-        setFilteredSuppliers(mockSuppliers);
-      }
-
-      setIsLoading(false);
-    }
-    loadData();
-  }, []);
+    setSuppliers(initialSuppliers);
+    setFilteredSuppliers(initialSuppliers);
+  }, [initialSuppliers]);
 
   useEffect(() => {
     let filtered = suppliers;
     if (searchTerm) {
+      const lower = searchTerm.toLowerCase();
       filtered = filtered.filter(
         (s) =>
-          s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          s.contact_person.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          s.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          s.city.toLowerCase().includes(searchTerm.toLowerCase())
+          s.name.toLowerCase().includes(lower) ||
+          (s.contact_person &&
+            s.contact_person.toLowerCase().includes(lower)) ||
+          (s.email && s.email.toLowerCase().includes(lower)) ||
+          (s.city && s.city.toLowerCase().includes(lower))
       );
     }
     setFilteredSuppliers(filtered);
   }, [suppliers, searchTerm]);
 
   const handleAddSupplier = async () => {
-    const newSupplier: Supplier = {
-      id: Date.now().toString(),
-      ...formData,
-      status: "active",
-      total_orders: 0,
-      total_spent: 0,
-      created_at: new Date().toISOString(),
-    };
+    if (!formData.name.trim()) {
+      toast.error("Supplier name is required");
+      return;
+    }
 
-    // In a real implementation, insert into database
-    setSuppliers((prev) => [...prev, newSupplier]);
-    setAddDialogOpen(false);
-    setFormData({
-      name: "",
-      contact_person: "",
-      email: "",
-      phone: "",
-      address: "",
-      city: "",
-      notes: "",
+    setIsSubmitting(true);
+
+    const result = await createSupplier({
+      name: formData.name,
+      contact_person: formData.contact_person || null,
+      email: formData.email || null,
+      phone: formData.phone || null,
+      address: formData.address || null,
+      city: formData.city || null,
+      notes: formData.notes || null,
     });
+
+    setIsSubmitting(false);
+
+    if (result.success) {
+      toast.success(result.message || "Supplier created successfully");
+      setAddDialogOpen(false);
+      setFormData({
+        name: "",
+        contact_person: "",
+        email: "",
+        phone: "",
+        address: "",
+        city: "",
+        notes: "",
+      });
+      router.refresh();
+    } else {
+      toast.error(result.message || "Failed to create supplier");
+    }
   };
 
-  const handleToggleStatus = (id: string) => {
-    setSuppliers((prev) =>
-      prev.map((s) =>
-        s.id === id
-          ? { ...s, status: s.status === "active" ? "inactive" : "active" }
-          : s
-      )
-    );
+  const handleEditSupplier = async () => {
+    if (!selectedSupplier || !formData.name.trim()) {
+      toast.error("Supplier name is required");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    const result = await updateSupplier(selectedSupplier.id, {
+      name: formData.name,
+      contact_person: formData.contact_person || null,
+      email: formData.email || null,
+      phone: formData.phone || null,
+      address: formData.address || null,
+      city: formData.city || null,
+      notes: formData.notes || null,
+    });
+
+    setIsSubmitting(false);
+
+    if (result.success) {
+      toast.success(result.message || "Supplier updated successfully");
+      setEditDialogOpen(false);
+      setSelectedSupplier(null);
+      setFormData({
+        name: "",
+        contact_person: "",
+        email: "",
+        phone: "",
+        address: "",
+        city: "",
+        notes: "",
+      });
+      router.refresh();
+    } else {
+      toast.error(result.message || "Failed to update supplier");
+    }
   };
 
-  const activeCount = suppliers.filter((s) => s.status === "active").length;
-  const totalSpent = suppliers.reduce((sum, s) => sum + s.total_spent, 0);
+  const handleDeleteSupplier = async () => {
+    if (!selectedSupplier) return;
+
+    setIsSubmitting(true);
+
+    const result = await deleteSupplier(selectedSupplier.id);
+
+    setIsSubmitting(false);
+
+    if (result.success) {
+      toast.success(result.message || "Supplier deleted successfully");
+      setDeleteDialogOpen(false);
+      setSelectedSupplier(null);
+      router.refresh();
+    } else {
+      toast.error(result.message || "Failed to delete supplier");
+    }
+  };
+
+  const openEditDialog = (supplier: Supplier) => {
+    setSelectedSupplier(supplier);
+    setFormData({
+      name: supplier.name,
+      contact_person: supplier.contact_person || "",
+      email: supplier.email || "",
+      phone: supplier.phone || "",
+      address: supplier.address || "",
+      city: supplier.city || "",
+      notes: supplier.notes || "",
+    });
+    setEditDialogOpen(true);
+  };
+
+  const openDeleteDialog = (supplier: Supplier) => {
+    setSelectedSupplier(supplier);
+    setDeleteDialogOpen(true);
+  };
+
+  const activeCount = suppliers.filter((s) => s.is_active !== false).length;
 
   if (isLoading) {
     return (
@@ -224,7 +261,7 @@ export function SuppliersManagement() {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
@@ -245,29 +282,13 @@ export function SuppliersManagement() {
             <Package className="h-4 w-4 text-blue-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {suppliers.reduce((sum, s) => sum + s.total_orders, 0)}
-            </div>
-            <p className="text-xs text-muted-foreground">Purchase orders</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Spent</CardTitle>
-            <Building2 className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              ₱{totalSpent.toLocaleString()}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              All time procurement
-            </p>
+            <div className="text-2xl font-bold">{suppliers.length}</div>
+            <p className="text-xs text-muted-foreground">Total suppliers</p>
           </CardContent>
         </Card>
       </div>
 
-      <div className="flex flex-col md:flex-row gap-4">
+      <div className="flex flex-col sm:flex-row gap-4">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
           <Input
@@ -287,7 +308,7 @@ export function SuppliersManagement() {
           <CardTitle>Suppliers</CardTitle>
           <CardDescription>Manage your vendor relationships</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -296,8 +317,6 @@ export function SuppliersManagement() {
                 <TableHead>Contact Info</TableHead>
                 <TableHead>Location</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Orders</TableHead>
-                <TableHead>Total Spent</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -305,46 +324,55 @@ export function SuppliersManagement() {
               {filteredSuppliers.map((supplier) => (
                 <TableRow key={supplier.id}>
                   <TableCell className="font-medium">{supplier.name}</TableCell>
-                  <TableCell>{supplier.contact_person}</TableCell>
+                  <TableCell>{supplier.contact_person || "-"}</TableCell>
                   <TableCell>
                     <div className="flex flex-col gap-1 text-sm">
-                      <div className="flex items-center gap-1">
-                        <Mail className="h-3 w-3" /> {supplier.email}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Phone className="h-3 w-3" /> {supplier.phone}
-                      </div>
+                      {supplier.email && (
+                        <div className="flex items-center gap-1">
+                          <Mail className="h-3 w-3" /> {supplier.email}
+                        </div>
+                      )}
+                      {supplier.phone && (
+                        <div className="flex items-center gap-1">
+                          <Phone className="h-3 w-3" /> {supplier.phone}
+                        </div>
+                      )}
+                      {!supplier.email && !supplier.phone && "-"}
                     </div>
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-1 text-sm">
-                      <MapPin className="h-3 w-3" /> {supplier.city}
-                    </div>
+                    {supplier.city ? (
+                      <div className="flex items-center gap-1 text-sm">
+                        <MapPin className="h-3 w-3" /> {supplier.city}
+                      </div>
+                    ) : (
+                      "-"
+                    )}
                   </TableCell>
                   <TableCell>
                     <Badge
                       variant={
-                        supplier.status === "active" ? "default" : "secondary"
+                        supplier.is_active !== false ? "default" : "secondary"
                       }
                     >
-                      {supplier.status === "active" ? "Active" : "Inactive"}
+                      {supplier.is_active !== false ? "Active" : "Inactive"}
                     </Badge>
-                  </TableCell>
-                  <TableCell>{supplier.total_orders}</TableCell>
-                  <TableCell className="font-bold">
-                    ₱{supplier.total_spent.toLocaleString()}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => {
-                          setSelectedSupplier(supplier);
-                          setDetailsOpen(true);
-                        }}
+                        onClick={() => openEditDialog(supplier)}
                       >
                         <Edit3 className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openDeleteDialog(supplier)}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </div>
                   </TableCell>
@@ -355,70 +383,144 @@ export function SuppliersManagement() {
         </CardContent>
       </Card>
 
-      {/* Supplier Details */}
-      <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
+      {/* Edit Supplier Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{selectedSupplier?.name}</DialogTitle>
-            <DialogDescription>Supplier details and history</DialogDescription>
+            <DialogTitle>Edit Supplier</DialogTitle>
+            <DialogDescription>Update supplier information</DialogDescription>
           </DialogHeader>
-          {selectedSupplier && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-muted-foreground">Contact:</span>
-                  <div className="font-medium">
-                    {selectedSupplier.contact_person}
-                  </div>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Email:</span>
-                  <div>{selectedSupplier.email}</div>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Phone:</span>
-                  <div>{selectedSupplier.phone}</div>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Location:</span>
-                  <div>
-                    {selectedSupplier.address}, {selectedSupplier.city}
-                  </div>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Total Orders:</span>
-                  <div className="font-bold">
-                    {selectedSupplier.total_orders}
-                  </div>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Total Spent:</span>
-                  <div className="font-bold">
-                    ₱{selectedSupplier.total_spent.toLocaleString()}
-                  </div>
-                </div>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-name">Company Name *</Label>
+              <Input
+                id="edit-name"
+                value={formData.name}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, name: e.target.value }))
+                }
+                placeholder="e.g., VUSE Philippines"
+                disabled={isSubmitting}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-contact">Contact Person</Label>
+              <Input
+                id="edit-contact"
+                value={formData.contact_person}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    contact_person: e.target.value,
+                  }))
+                }
+                placeholder="Full name"
+                disabled={isSubmitting}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-email">Email</Label>
+                <Input
+                  id="edit-email"
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, email: e.target.value }))
+                  }
+                  placeholder="email@company.com"
+                  disabled={isSubmitting}
+                />
               </div>
-              {selectedSupplier.notes && (
-                <div className="bg-muted p-3 rounded text-sm">
-                  <span className="font-medium">Notes:</span>{" "}
-                  {selectedSupplier.notes}
-                </div>
-              )}
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => handleToggleStatus(selectedSupplier.id)}
-                >
-                  {selectedSupplier.status === "active"
-                    ? "Deactivate"
-                    : "Activate"}
-                </Button>
+              <div className="space-y-2">
+                <Label htmlFor="edit-phone">Phone</Label>
+                <Input
+                  id="edit-phone"
+                  value={formData.phone}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, phone: e.target.value }))
+                  }
+                  placeholder="+63 9XX XXX XXXX"
+                  disabled={isSubmitting}
+                />
               </div>
             </div>
-          )}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-address">Address</Label>
+                <Input
+                  id="edit-address"
+                  value={formData.address}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      address: e.target.value,
+                    }))
+                  }
+                  placeholder="Street address"
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-city">City</Label>
+                <Input
+                  id="edit-city"
+                  value={formData.city}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, city: e.target.value }))
+                  }
+                  placeholder="City"
+                  disabled={isSubmitting}
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setEditDialogOpen(false);
+                  setSelectedSupplier(null);
+                }}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleEditSupplier}
+                disabled={!formData.name || isSubmitting}
+              >
+                {isSubmitting ? "Saving..." : "Save Changes"}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Supplier</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete &quot;{selectedSupplier?.name}
+              &quot;? This action cannot be undone. The supplier can only be
+              deleted if there are no associated purchase orders.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSubmitting}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteSupplier}
+              disabled={isSubmitting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isSubmitting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Add Supplier Dialog */}
       <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
@@ -430,19 +532,22 @@ export function SuppliersManagement() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium">Company Name *</label>
+            <div className="space-y-2">
+              <Label htmlFor="name">Company Name *</Label>
               <Input
+                id="name"
                 value={formData.name}
                 onChange={(e) =>
                   setFormData((prev) => ({ ...prev, name: e.target.value }))
                 }
                 placeholder="e.g., VUSE Philippines"
+                disabled={isSubmitting}
               />
             </div>
-            <div>
-              <label className="text-sm font-medium">Contact Person *</label>
+            <div className="space-y-2">
+              <Label htmlFor="contact">Contact Person</Label>
               <Input
+                id="contact"
                 value={formData.contact_person}
                 onChange={(e) =>
                   setFormData((prev) => ({
@@ -451,35 +556,41 @@ export function SuppliersManagement() {
                   }))
                 }
                 placeholder="Full name"
+                disabled={isSubmitting}
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium">Email</label>
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
                 <Input
+                  id="email"
                   type="email"
                   value={formData.email}
                   onChange={(e) =>
                     setFormData((prev) => ({ ...prev, email: e.target.value }))
                   }
                   placeholder="email@company.com"
+                  disabled={isSubmitting}
                 />
               </div>
-              <div>
-                <label className="text-sm font-medium">Phone</label>
+              <div className="space-y-2">
+                <Label htmlFor="phone">Phone</Label>
                 <Input
+                  id="phone"
                   value={formData.phone}
                   onChange={(e) =>
                     setFormData((prev) => ({ ...prev, phone: e.target.value }))
                   }
                   placeholder="+63 9XX XXX XXXX"
+                  disabled={isSubmitting}
                 />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium">Address</label>
+              <div className="space-y-2">
+                <Label htmlFor="address">Address</Label>
                 <Input
+                  id="address"
                   value={formData.address}
                   onChange={(e) =>
                     setFormData((prev) => ({
@@ -488,38 +599,35 @@ export function SuppliersManagement() {
                     }))
                   }
                   placeholder="Street address"
+                  disabled={isSubmitting}
                 />
               </div>
-              <div>
-                <label className="text-sm font-medium">City</label>
+              <div className="space-y-2">
+                <Label htmlFor="city">City</Label>
                 <Input
+                  id="city"
                   value={formData.city}
                   onChange={(e) =>
                     setFormData((prev) => ({ ...prev, city: e.target.value }))
                   }
                   placeholder="City"
+                  disabled={isSubmitting}
                 />
               </div>
             </div>
-            <div>
-              <label className="text-sm font-medium">Notes</label>
-              <Input
-                value={formData.notes}
-                onChange={(e) =>
-                  setFormData((prev) => ({ ...prev, notes: e.target.value }))
-                }
-                placeholder="Additional notes..."
-              />
-            </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
+              <Button
+                variant="outline"
+                onClick={() => setAddDialogOpen(false)}
+                disabled={isSubmitting}
+              >
                 Cancel
               </Button>
               <Button
                 onClick={handleAddSupplier}
-                disabled={!formData.name || !formData.contact_person}
+                disabled={!formData.name || isSubmitting}
               >
-                Add Supplier
+                {isSubmitting ? "Creating..." : "Add Supplier"}
               </Button>
             </div>
           </div>

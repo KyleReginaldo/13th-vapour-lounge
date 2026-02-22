@@ -1,6 +1,6 @@
-import { Facebook, Instagram, Twitter } from "lucide-react";
+import { Facebook } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
-
 const Footer = () => {
   const currentYear = new Date().getFullYear();
 
@@ -11,7 +11,12 @@ const Footer = () => {
           {/* Brand */}
           <div>
             <h3 className="text-lg font-bold gradient-text mb-4">
-              VAPOUR LOUNGE
+              <Image
+                src="/logo.jpg"
+                alt="13th Vapour Lounge Logo"
+                width={64}
+                height={64}
+              />{" "}
             </h3>
             <p className="text-sm text-muted-foreground mb-4">
               Trece Martires premier vape shop offering premium e-liquids,
@@ -19,7 +24,7 @@ const Footer = () => {
             </p>
             <div className="flex gap-3">
               <Link
-                href="https://facebook.com"
+                href="https://www.facebook.com/profile.php?id=61553552038082"
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -27,7 +32,7 @@ const Footer = () => {
                   <Facebook className="h-4 w-4" />
                 </div>
               </Link>
-              <Link
+              {/* <Link
                 href="https://instagram.com"
                 target="_blank"
                 rel="noopener noreferrer"
@@ -44,7 +49,7 @@ const Footer = () => {
                 <div className="p-2 bg-background rounded-full hover:bg-primary hover:text-primary-foreground transition-colors">
                   <Twitter className="h-4 w-4" />
                 </div>
-              </Link>
+              </Link> */}
             </div>
           </div>
 
@@ -168,7 +173,7 @@ const Footer = () => {
 
         {/* Bottom Bar */}
         <div className="mt-12 pt-8 border-t text-center text-sm text-muted-foreground">
-          <p>&copy; {currentYear} Vapour Lounge. All rights reserved.</p>
+          <p>&copy; {currentYear} 13th Vapour Lounge. All rights reserved.</p>
           <p className="mt-2">
             This website contains products intended for adults 18 years or
             older.

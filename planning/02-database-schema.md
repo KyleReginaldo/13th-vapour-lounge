@@ -1,4 +1,4 @@
-# Complete Database Schema for Vapour Lounge
+# Complete Database Schema for 13th Vapour Lounge
 
 ## Overview
 

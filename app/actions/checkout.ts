@@ -14,7 +14,7 @@ import { z } from "zod";
 
 const checkoutSchema = z.object({
   shippingAddressId: z.string().uuid(),
-  paymentMethod: z.enum(["gcash", "bank_transfer", "cash_on_delivery"]),
+  paymentMethod: z.enum(["gcash", "cash_on_delivery"]),
   customerNotes: z.string().optional(),
 });
 

@@ -2,7 +2,7 @@
 
 ## Research Overview
 
-Comprehensive authentication strategy for Vapour Lounge with three distinct user roles: Admin, Staff, and Customer.
+Comprehensive authentication strategy for 13th Vapour Lounge with three distinct user roles: Admin, Staff, and Customer.
 
 ---
 

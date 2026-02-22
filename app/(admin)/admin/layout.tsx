@@ -2,6 +2,8 @@ import { AdminHeader } from "@/components/layout/AdminHeader";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { requireRole } from "@/lib/auth/roles";
 
+export const dynamic = "force-dynamic";
+
 export default async function AdminLayout({
   children,
 }: {

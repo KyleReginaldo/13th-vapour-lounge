@@ -247,9 +247,8 @@ export function AddProductDialog({ isOpen, onClose }: AddProductDialogProps) {
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
                   >
                     <option value="">Select type</option>
-                    <option value="physical">Physical Product</option>
-                    <option value="digital">Digital Product</option>
-                    <option value="service">Service</option>
+                    <option value="simple">Simple Product</option>
+                    <option value="variant">Product with Variants</option>
                   </select>
                 </div>
 
@@ -461,6 +460,7 @@ export function AddProductDialog({ isOpen, onClose }: AddProductDialogProps) {
                 multiple
                 maxFiles={5}
                 disabled={loading}
+                folder="products"
               />
             </div>
 

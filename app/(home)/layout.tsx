@@ -3,6 +3,8 @@ import { HeaderWrapper } from "@/components/layout/HeaderWrapper";
 import { MobileBottomNavWrapper } from "@/components/layout/MobileBottomNavWrapper";
 import { AgeGateProvider } from "@/components/shared/AgeGateProvider";
 
+export const dynamic = "force-dynamic";
+
 export default function HomeLayout({
   children,
 }: Readonly<{

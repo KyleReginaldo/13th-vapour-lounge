@@ -442,9 +442,8 @@ export function ProductsManagement({ products }: ProductsManagementProps) {
                         className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <option value="">Select type</option>
-                        <option value="physical">Physical Product</option>
-                        <option value="digital">Digital Product</option>
-                        <option value="service">Service</option>
+                        <option value="simple">Simple Product</option>
+                        <option value="variant">Product with Variants</option>
                       </select>
                     </div>
                     <div className="flex items-center gap-4 pt-6">
@@ -609,6 +608,7 @@ export function ProductsManagement({ products }: ProductsManagementProps) {
                 <div className="space-y-2">
                   <Label>Product Images *</Label>
                   <ImageUpload
+                    folder="products"
                     value={productImages}
                     onChange={(urls) =>
                       setProductImages(Array.isArray(urls) ? urls : [urls])

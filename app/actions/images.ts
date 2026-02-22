@@ -49,19 +49,22 @@ export const uploadProductImage = withErrorHandling(
 
     // Upload to storage
     const { data: uploadData, error: uploadError } = await supabase.storage
-      .from("product-images")
+      .from("files")
       .upload(fileName, file, {
         cacheControl: "31536000", // 1 year
         upsert: false,
       });
 
     if (uploadError) {
-      return error("Failed to upload image", ErrorCode.SERVER_ERROR);
+      return error(
+        "Failed to upload image: " + uploadError.message,
+        ErrorCode.SERVER_ERROR
+      );
     }
 
     // Get public URL
     const { data: urlData } = supabase.storage
-      .from("product-images")
+      .from("files")
       .getPublicUrl(fileName);
 
     // If setting as primary, unset other primary images
@@ -86,7 +89,7 @@ export const uploadProductImage = withErrorHandling(
 
     if (dbError) {
       // Clean up uploaded file
-      await supabase.storage.from("product-images").remove([fileName]);
+      await supabase.storage.from("files").remove([fileName]);
       return error("Failed to save image record", ErrorCode.SERVER_ERROR);
     }
 
@@ -119,12 +122,11 @@ export const deleteProductImage = withErrorHandling(
       return error("Image not found", ErrorCode.NOT_FOUND);
     }
 
-    // Extract filename from URL
-    const fileName = image.url.split("/").pop();
-    if (fileName) {
-      await supabase.storage
-        .from("product-images")
-        .remove([`products/${fileName}`]);
+    // Extract storage path from URL (everything after /files/)
+    const urlParts = image.url.split("/files/");
+    const storagePath = urlParts.length > 1 ? urlParts[1] : null;
+    if (storagePath) {
+      await supabase.storage.from("files").remove([storagePath]);
     }
 
     // Delete from database
@@ -219,16 +221,19 @@ export const uploadPaymentProof = withErrorHandling(
 
     // Upload to storage
     const { data: uploadData, error: uploadError } = await supabase.storage
-      .from("payment-proofs")
-      .upload(fileName, file);
+      .from("files")
+      .upload(fileName, file, { cacheControl: "3600", upsert: false });
 
     if (uploadError) {
-      return error("Failed to upload payment proof", ErrorCode.SERVER_ERROR);
+      return error(
+        "Failed to upload payment proof: " + uploadError.message,
+        ErrorCode.SERVER_ERROR
+      );
     }
 
     // Get URL
     const { data: urlData } = supabase.storage
-      .from("payment-proofs")
+      .from("files")
       .getPublicUrl(fileName);
 
     // Create payment proof record
@@ -245,7 +250,7 @@ export const uploadPaymentProof = withErrorHandling(
       .single();
 
     if (dbError) {
-      await supabase.storage.from("payment-proofs").remove([fileName]);
+      await supabase.storage.from("files").remove([fileName]);
       return error("Failed to save payment proof", ErrorCode.SERVER_ERROR);
     }
 
@@ -289,16 +294,19 @@ export const uploadReviewImage = withErrorHandling(
 
     // Upload to storage
     const { data: uploadData, error: uploadError } = await supabase.storage
-      .from("product-images") // Reuse product-images bucket for reviews
-      .upload(fileName, file);
+      .from("files")
+      .upload(fileName, file, { cacheControl: "31536000", upsert: false });
 
     if (uploadError) {
-      return error("Failed to upload image", ErrorCode.SERVER_ERROR);
+      return error(
+        "Failed to upload image: " + uploadError.message,
+        ErrorCode.SERVER_ERROR
+      );
     }
 
     // Get public URL
     const { data: urlData } = supabase.storage
-      .from("product-images")
+      .from("files")
       .getPublicUrl(fileName);
 
     return success({ url: urlData.publicUrl });

@@ -1,7 +1,9 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+import { generatePublicFileName } from "@/lib/validations/file-upload";
 import { ImagePlus, Loader2, X } from "lucide-react";
 import Image from "next/image";
 import { useRef, useState } from "react";
@@ -16,6 +18,8 @@ interface ImageUploadProps {
   disabled?: boolean;
   className?: string;
   aspectRatio?: "square" | "video" | "auto";
+  /** Sub-folder inside the "files" bucket, e.g. "products", "reviews" */
+  folder?: string;
 }
 
 export function ImageUpload({
@@ -27,6 +31,7 @@ export function ImageUpload({
   disabled = false,
   className,
   aspectRatio = "square",
+  folder = "products",
 }: ImageUploadProps) {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -37,7 +42,6 @@ export function ImageUpload({
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    // Check max files limit
     if (multiple && images.length + files.length > maxFiles) {
       toast.error(`You can only upload up to ${maxFiles} images`);
       return;
@@ -46,40 +50,41 @@ export function ImageUpload({
     setUploading(true);
 
     try {
+      const supabase = createClient();
       const uploadedUrls: string[] = [];
 
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
 
-        // Validate file type
         if (!file.type.startsWith("image/")) {
           toast.error(`${file.name} is not an image file`);
           continue;
         }
 
-        // Validate file size (5MB)
         if (file.size > 5 * 1024 * 1024) {
           toast.error(`${file.name} is too large. Max size is 5MB`);
           continue;
         }
 
-        // Convert to base64 or upload to cloud storage
-        // For now, using base64 for temporary preview
-        const reader = new FileReader();
-        const url = await new Promise<string>((resolve, reject) => {
-          reader.onload = (e) => {
-            const result = e.target?.result;
-            if (typeof result === "string") {
-              resolve(result);
-            } else {
-              reject(new Error("Failed to read file"));
-            }
-          };
-          reader.onerror = () => reject(new Error("Failed to read file"));
-          reader.readAsDataURL(file);
-        });
+        const fileName = `${folder}/${generatePublicFileName(file.name)}`;
 
-        uploadedUrls.push(url);
+        const { error: uploadError } = await supabase.storage
+          .from("files")
+          .upload(fileName, file, {
+            cacheControl: "31536000",
+            upsert: false,
+          });
+
+        if (uploadError) {
+          toast.error(`Failed to upload ${file.name}: ${uploadError.message}`);
+          continue;
+        }
+
+        const { data: urlData } = supabase.storage
+          .from("files")
+          .getPublicUrl(fileName);
+
+        uploadedUrls.push(urlData.publicUrl);
       }
 
       if (uploadedUrls.length > 0) {
@@ -92,12 +97,11 @@ export function ImageUpload({
           `${uploadedUrls.length} image${uploadedUrls.length > 1 ? "s" : ""} uploaded`
         );
       }
-    } catch (error) {
-      console.error("Upload error:", error);
+    } catch (err) {
+      console.error("Upload error:", err);
       toast.error("Failed to upload image");
     } finally {
       setUploading(false);
-      // Reset input
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }

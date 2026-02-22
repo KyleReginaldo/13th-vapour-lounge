@@ -60,6 +60,7 @@ export function error(
   return {
     success: false,
     error: message,
+    message, // mirrors `error` so callers can check either field
     code,
   };
 }

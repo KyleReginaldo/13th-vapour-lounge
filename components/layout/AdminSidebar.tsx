@@ -127,7 +127,7 @@ export function AdminSidebar() {
         {/* Logo */}
         <div className="flex items-center h-16 px-6 border-b border-gray-800 shrink-0">
           <Image
-            src="/logo.png"
+            src="/logo.jpg"
             alt="13th Vapour Lounge Logo"
             width={32}
             height={32}

@@ -18,6 +18,8 @@ export const supplierSchema = z.object({
     .optional()
     .nullable(),
   address: z.string().max(500, "Address is too long").optional().nullable(),
+  city: z.string().max(100, "City name is too long").optional().nullable(),
+  notes: z.string().max(1000, "Notes are too long").optional().nullable(),
 });
 
 export type SupplierInput = z.infer<typeof supplierSchema>;

@@ -504,6 +504,17 @@ export const getPaymentMethodBreakdown = withErrorHandling(
       (a, b) => b.revenue - a.revenue
     );
 
-    return success(breakdown);
+    // Calculate total revenue for percentage
+    const totalRevenue = breakdown.reduce((sum, m) => sum + m.revenue, 0);
+
+    // Add percentage to each item
+    const breakdownWithPercentage = breakdown.map((item) => ({
+      paymentMethod: item.method,
+      count: item.count,
+      totalRevenue: item.revenue,
+      percentage: totalRevenue > 0 ? (item.revenue / totalRevenue) * 100 : 0,
+    }));
+
+    return success(breakdownWithPercentage);
   }
 );

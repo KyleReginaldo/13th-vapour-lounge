@@ -28,7 +28,7 @@ export async function generateMetadata({
       description:
         product.meta_description ||
         product.description?.slice(0, 160) ||
-        `Buy ${product.name} at Vapour Lounge`,
+        `Buy ${product.name} at 13th Vapour Lounge`,
       openGraph: {
         title: product.name,
         description: product.description || undefined,

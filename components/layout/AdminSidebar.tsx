@@ -1,5 +1,6 @@
 "use client";
 
+import { useSidebarStore } from "@/lib/stores/sidebar-store";
 import { cn } from "@/lib/utils";
 import {
   BuildingStorefrontIcon,
@@ -11,13 +12,14 @@ import {
   CubeIcon,
   DocumentTextIcon,
   HomeIcon,
+  ShieldCheckIcon,
   ShoppingBagIcon,
   ShoppingCartIcon,
   UsersIcon,
 } from "@heroicons/react/24/outline";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-
 const navigation = [
   {
     name: "Dashboard",
@@ -80,6 +82,16 @@ const navigation = [
     icon: UsersIcon,
   },
   {
+    name: "Users",
+    href: "/admin/users",
+    icon: UsersIcon,
+  },
+  {
+    name: "Audit Logs",
+    href: "/admin/audit-logs",
+    icon: ShieldCheckIcon,
+  },
+  {
     name: "Settings",
     href: "/admin/settings",
     icon: Cog6ToothIcon,
@@ -88,44 +100,72 @@ const navigation = [
 
 export function AdminSidebar() {
   const pathname = usePathname();
+  const { isOpen, close } = useSidebarStore();
 
   return (
-    <div className="flex flex-col w-64 bg-gray-900 text-white h-screen">
-      {/* Logo */}
-      <div className="flex items-center h-16 px-6 border-b border-gray-800">
-        <h1 className="text-xl font-bold">Vapour Lounge</h1>
-      </div>
+    <>
+      {/* Mobile backdrop */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={close}
+          aria-hidden="true"
+        />
+      )}
 
-      {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto py-4">
-        <div className="px-3 space-y-1">
-          {navigation.map((item) => {
-            const isActive =
-              pathname === item.href || pathname.startsWith(item.href + "/");
-
-            return (
-              <Link
-                key={item.name}
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-                  isActive
-                    ? "bg-gray-800 text-white"
-                    : "text-gray-300 hover:bg-gray-800 hover:text-white"
-                )}
-              >
-                <item.icon className="h-5 w-5" />
-                {item.name}
-              </Link>
-            );
-          })}
+      {/* Sidebar panel */}
+      <div
+        className={cn(
+          "fixed inset-y-0 left-0 z-50 flex flex-col w-64 bg-gray-900 text-white h-screen",
+          "transition-transform duration-200 ease-in-out",
+          // Desktop: always visible, relative position
+          "lg:relative lg:translate-x-0 lg:z-auto",
+          // Mobile: slide in/out
+          isOpen ? "translate-x-0" : "-translate-x-full"
+        )}
+      >
+        {/* Logo */}
+        <div className="flex items-center h-16 px-6 border-b border-gray-800 shrink-0">
+          <Image
+            src="/logo.png"
+            alt="13th Vapour Lounge Logo"
+            width={32}
+            height={32}
+          />
         </div>
-      </nav>
 
-      {/* Footer */}
-      <div className="border-t border-gray-800 p-4">
-        <p className="text-xs text-gray-400">Admin Panel v1.0</p>
+        {/* Navigation */}
+        <nav className="flex-1 overflow-y-auto py-4">
+          <div className="px-3 space-y-1">
+            {navigation.map((item) => {
+              const isActive =
+                pathname === item.href || pathname.startsWith(item.href + "/");
+
+              return (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  onClick={close}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+                    isActive
+                      ? "bg-gray-800 text-white"
+                      : "text-gray-300 hover:bg-gray-800 hover:text-white"
+                  )}
+                >
+                  <item.icon className="h-5 w-5" />
+                  {item.name}
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
+
+        {/* Footer */}
+        <div className="border-t border-gray-800 p-4 shrink-0">
+          <p className="text-xs text-gray-400">Admin Panel v1.0</p>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

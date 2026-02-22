@@ -4,15 +4,43 @@ import { POSCart } from "@/components/admin/pos/POSCart";
 import { TransactionHistory } from "@/components/admin/pos/TransactionHistory";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { Database } from "@/database.types";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
 import { Clock, DollarSign, History, ShoppingCart, Store } from "lucide-react";
 import { useEffect, useState } from "react";
 
-type Product = Database["public"]["Tables"]["products"]["Row"] & {
-  product_images?: { url: string; sort_order: number | null }[];
-  product_variants?: Database["public"]["Tables"]["product_variants"]["Row"][];
+type Product = {
+  id: string;
+  name: string;
+  sku: string;
+  slug: string;
+  description: string | null;
+  base_price: number;
+  compare_at_price: number | null;
+  cost_price: number | null;
+  stock_quantity: number | null;
+  low_stock_threshold: number | null;
+  critical_stock_threshold: number | null;
+  track_inventory: boolean | null;
+  barcode: string | null;
+  qr_code: string | null;
+  is_published: boolean | null;
+  is_featured: boolean | null;
+  has_variants: boolean | null;
+  product_type: string | null;
+  brand_id: string | null;
+  category_id: string | null;
+  product_images?: { url: string; sort_order: number | null; id: string }[];
+  product_variants?: {
+    id: string;
+    sku: string;
+    price: number | null;
+    stock_quantity: number | null;
+    barcode: string | null;
+    attributes: unknown;
+  }[];
+  brand?: { id: string; name: string; slug: string } | null;
+  category?: { id: string; name: string; slug: string } | null;
 };
 
 type Transaction = {
@@ -53,9 +81,30 @@ export default function POSPage() {
         .from("products")
         .select(
           `
-          *,
-          product_images(url, sort_order),
-          product_variants(*)
+          id,
+          name,
+          sku,
+          slug,
+          description,
+          base_price,
+          compare_at_price,
+          cost_price,
+          stock_quantity,
+          low_stock_threshold,
+          critical_stock_threshold,
+          track_inventory,
+          barcode,
+          qr_code,
+          is_published,
+          is_featured,
+          has_variants,
+          product_type,
+          brand_id,
+          category_id,
+          brand:brands!brand_id(id, name, slug),
+          category:categories!category_id(id, name, slug),
+          product_images(id, url, sort_order),
+          product_variants(id, sku, price, stock_quantity, barcode, attributes)
         `
         )
         .eq("is_published", true)

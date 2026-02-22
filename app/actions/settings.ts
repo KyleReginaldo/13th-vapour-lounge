@@ -27,7 +27,7 @@ export const getShopSettings = withErrorHandling(
     if (fetchError) {
       // If no settings exist, return defaults
       return success({
-        shop_name: "Vapour Lounge",
+        shop_name: "13th Vapour Lounge",
         tax_rate: 0,
         currency: "PHP",
         allow_cod: true,

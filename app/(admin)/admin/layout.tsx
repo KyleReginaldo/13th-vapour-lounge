@@ -1,7 +1,6 @@
 import { AdminHeader } from "@/components/layout/AdminHeader";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { requireRole } from "@/lib/auth/roles";
-import { Toaster } from "sonner";
 
 export default async function AdminLayout({
   children,
@@ -22,13 +21,10 @@ export default async function AdminLayout({
         <AdminHeader />
 
         {/* Page Content */}
-        <main className="flex-1 overflow-y-auto bg-gray-50 p-6">
+        <main className="flex-1 overflow-y-auto bg-gray-50 p-4 lg:p-6">
           {children}
         </main>
       </div>
-
-      {/* Toast Notifications */}
-      <Toaster position="top-right" richColors />
     </div>
   );
 }

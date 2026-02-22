@@ -4,6 +4,7 @@ export const updateOrderStatusSchema = z.object({
   status: z.enum([
     "pending",
     "processing",
+    "packed",
     "shipped",
     "delivered",
     "cancelled",

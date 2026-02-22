@@ -35,7 +35,7 @@ async function seedShopSettings() {
   console.log("🌱 Seeding shop settings...");
 
   const settings = [
-    { key: "shop_name", value: { name: "Vapour Lounge" } },
+    { key: "shop_name", value: { name: "13th Vapour Lounge" } },
     { key: "business_hours", value: { open: "09:00", close: "21:00" } },
     {
       key: "features",

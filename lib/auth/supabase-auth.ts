@@ -62,7 +62,6 @@ export async function signUp(formData: FormData) {
     suffix: suffix || null,
     contact_number: contactNumber,
     date_of_birth: dateOfBirth,
-    token_identifier: authData.user.id,
     role_id: customerRole.id,
     is_verified: false,
   });

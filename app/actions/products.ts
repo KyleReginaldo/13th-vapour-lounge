@@ -2,6 +2,7 @@
 
 import {
   error,
+  ErrorCode,
   success,
   validateInput,
   withErrorHandling,
@@ -15,13 +16,23 @@ import { revalidatePath } from "next/cache";
 
 export type ProductFormData = {
   name: string;
+  sku: string;
+  description?: string;
   category: string;
+  brand?: string;
   price: number;
+  compare_at_price?: number;
+  cost_price?: number;
   quantity: number;
   images: string[];
   low_stock_threshold?: number;
   critical_stock_threshold?: number;
+  barcode?: string;
   qr_code?: string;
+  product_type?: string;
+  track_inventory?: boolean;
+  is_published?: boolean;
+  is_featured?: boolean;
 };
 
 /**
@@ -37,24 +48,93 @@ export const createProduct = withErrorHandling(
 
     const supabase = await createClient();
 
-    // Insert product (Note: Schema mismatch - validation expects different fields than database)
+    // Handle category - find or create
+    let categoryId: string | null = null;
+    if (validated.category) {
+      // First try to find existing category
+      const { data: existingCategory } = await supabase
+        .from("categories")
+        .select("id")
+        .eq("name", validated.category)
+        .single();
+
+      if (existingCategory) {
+        categoryId = existingCategory.id;
+      } else {
+        // Create new category if it doesn't exist
+        const { data: newCategory, error: categoryError } = await supabase
+          .from("categories")
+          .insert({
+            name: validated.category,
+            slug: validated.category.toLowerCase().replace(/\s+/g, "-"),
+          })
+          .select("id")
+          .single();
+
+        if (categoryError) {
+          console.error("Failed to create category:", categoryError);
+        } else if (newCategory) {
+          categoryId = newCategory.id;
+        }
+      }
+    }
+
+    // Use brand_id directly from the input
+    const brandId = validated.brand_id || null;
+
+    // Generate slug from product name
+    const slug = validated.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "");
+
+    // Insert product
     const { data: product, error: insertError } = await supabase
       .from("products")
       .insert({
         name: validated.name,
-        sku: `SKU-${Date.now()}`, // Generate temporary SKU
-        slug: validated.name.toLowerCase().replace(/\s+/g, "-"),
+        sku: validated.sku,
+        slug: slug,
+        description: validated.description || null,
         base_price: validated.price,
+        compare_at_price: validated.compare_at_price || null,
+        cost_price: validated.cost_price || null,
         stock_quantity: validated.quantity,
+        category_id: categoryId,
+        brand_id: brandId,
         low_stock_threshold: validated.low_stock_threshold || 10,
         critical_stock_threshold: validated.critical_stock_threshold || 5,
+        barcode: validated.barcode || null,
         qr_code: validated.qr_code || null,
+        product_type: validated.product_type || null,
+        track_inventory: validated.track_inventory ?? true,
+        is_published: validated.is_published ?? true,
+        is_featured: validated.is_featured ?? false,
       } as any)
       .select()
       .single();
 
     if (insertError) {
       return error(insertError.message);
+    }
+
+    // Insert product images if provided
+    if (validated.images && validated.images.length > 0) {
+      const imageRecords = validated.images.map((url, index) => ({
+        product_id: product.id,
+        url: url,
+        is_primary: index === 0, // First image is primary
+        sort_order: index,
+      }));
+
+      const { error: imagesError } = await supabase
+        .from("product_images")
+        .insert(imageRecords);
+
+      if (imagesError) {
+        console.error("Failed to insert product images:", imagesError);
+        // Don't fail the whole operation if images fail
+      }
     }
 
     // Log audit
@@ -136,7 +216,64 @@ export const deleteProduct = withErrorHandling(
       .eq("id", productId)
       .single();
 
-    // Delete product
+    if (!product) {
+      return error("Product not found", ErrorCode.NOT_FOUND);
+    }
+
+    // Check for references that would prevent deletion
+    const { data: cartItems } = await supabase
+      .from("carts")
+      .select("id")
+      .eq("product_id", productId)
+      .limit(1);
+
+    if (cartItems && cartItems.length > 0) {
+      return error(
+        "Cannot delete product: It is currently in customer carts. Remove it from all carts first.",
+        ErrorCode.VALIDATION_ERROR
+      );
+    }
+
+    const { data: orderItems } = await supabase
+      .from("order_items")
+      .select("id")
+      .eq("product_id", productId)
+      .limit(1);
+
+    if (orderItems && orderItems.length > 0) {
+      return error(
+        "Cannot delete product: It has been ordered. Products with order history cannot be deleted.",
+        ErrorCode.VALIDATION_ERROR
+      );
+    }
+
+    const { data: inventoryBatches } = await supabase
+      .from("inventory_batches")
+      .select("id")
+      .eq("product_id", productId)
+      .limit(1);
+
+    if (inventoryBatches && inventoryBatches.length > 0) {
+      return error(
+        "Cannot delete product: It has inventory batch records. Clear inventory batches first.",
+        ErrorCode.VALIDATION_ERROR
+      );
+    }
+
+    const { data: stockMovements } = await supabase
+      .from("stock_movements")
+      .select("id")
+      .eq("product_id", productId)
+      .limit(1);
+
+    if (stockMovements && stockMovements.length > 0) {
+      return error(
+        "Cannot delete product: It has stock movement history. Clear stock movements first.",
+        ErrorCode.VALIDATION_ERROR
+      );
+    }
+
+    // Delete product (product_images and product_reviews will cascade automatically)
     const { error: deleteError } = await supabase
       .from("products")
       .delete()
@@ -482,8 +619,30 @@ export const searchProducts = withErrorHandling(
       return error("Failed to search products");
     }
 
+    // Transform data to include primary_image
+    const products = (data || []).map((product: any) => {
+      const primaryImage = product.product_images?.find(
+        (img: any) => img.is_primary
+      );
+      const firstImage = product.product_images?.[0];
+
+      return {
+        id: product.id,
+        slug: product.slug,
+        name: product.name,
+        base_price: product.base_price,
+        compare_at_price: product.compare_at_price,
+        stock_quantity: product.stock_quantity,
+        average_rating: product.average_rating,
+        total_reviews: product.total_reviews,
+        is_featured: product.is_featured,
+        created_at: product.created_at,
+        primary_image: primaryImage?.url || firstImage?.url || null,
+      };
+    });
+
     return success({
-      products: data,
+      products,
       pagination: {
         page,
         limit,

@@ -43,7 +43,7 @@ export default function CartPage() {
             Continue Shopping
           </Link>
           <div className="flex items-center justify-between">
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
+            <h1 className="text-md font-bold text-gray-900 dark:text-gray-100">
               Shopping Cart
             </h1>
             {hasItems && (

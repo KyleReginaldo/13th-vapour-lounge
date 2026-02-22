@@ -42,16 +42,16 @@ export const ProductGrid = ({
     columns.tablet === 3 && "sm:grid-cols-3",
     columns.tablet === 4 && "sm:grid-cols-4",
     // Desktop
-    columns.desktop === 4 && "lg:grid-cols-4",
-    columns.desktop === 5 && "lg:grid-cols-5",
-    columns.desktop === 6 && "lg:grid-cols-6"
+    columns.desktop === 4 && "lg:grid-cols-4 xl:grid-cols-4",
+    columns.desktop === 5 && "lg:grid-cols-5 xl:grid-cols-5",
+    columns.desktop === 6 && "lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-6"
   );
 
   // Loading state
   if (isLoading) {
     return (
-      <div className={cn("grid gap-4", gridCols, className)}>
-        {Array.from({ length: 8 }).map((_, i) => (
+      <div className={cn("grid gap-3 sm:gap-4", gridCols, className)}>
+        {Array.from({ length: 12 }).map((_, i) => (
           <ProductCardSkeleton key={i} />
         ))}
       </div>
@@ -73,12 +73,12 @@ export const ProductGrid = ({
     variant === "compact" ? ProductCardCompact : ProductCard;
 
   return (
-    <div className={cn("grid gap-4", gridCols, className)}>
+    <div className={cn("grid gap-3 sm:gap-4", gridCols, className)}>
       {products.map((product, index) => (
         <CardComponent
           key={product.id}
           product={product}
-          priority={priority && index < 4} // Prioritize first 4 images
+          priority={priority && index < 6} // Prioritize first 6 images
         />
       ))}
     </div>

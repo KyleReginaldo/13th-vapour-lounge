@@ -6,7 +6,7 @@ Modern POS system design for vape shop retail operations with cash drawer manage
 
 ---
 
-## 1. POS Requirements for Vapour Lounge
+## 1. POS Requirements for 13th Vapour Lounge
 
 ### Core Features
 

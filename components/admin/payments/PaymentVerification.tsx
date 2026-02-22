@@ -1,22 +1,19 @@
 "use client";
 
+import { rejectPayment, verifyPayment } from "@/app/actions/payments";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -24,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 import {
   Table,
   TableBody,
@@ -32,302 +30,213 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { createClient } from "@/lib/supabase/client";
+import { Textarea } from "@/components/ui/textarea";
+import { formatCurrency } from "@/lib/utils";
 import {
   AlertCircle,
   Calendar,
   CheckCircle,
   Clock,
   DollarSign,
-  Download,
-  Filter,
-  Image as ImageIcon,
+  ExternalLink,
+  Loader2,
   Search,
+  User,
   XCircle,
+  ZoomIn,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
-type Payment = {
+type PaymentProof = {
   id: string;
   order_id: string;
-  amount: number;
-  payment_method: "bank_transfer" | "gcash" | "maya" | "cod" | "card";
-  payment_status: "pending" | "verified" | "rejected";
-  payment_proof_url?: string;
-  transaction_reference?: string;
-  created_at: string;
-  verified_at?: string;
-  verified_by?: string;
-  rejection_reason?: string;
-  order_number?: string;
-  customer_name?: string;
-  customer_email?: string;
+  customer_id: string;
+  image_url: string;
+  amount: number | null;
+  payment_method: string | null;
+  reference_number: string | null;
+  status: string | null;
+  uploaded_at: string | null;
+  verified_at: string | null;
+  verified_by: string | null;
+  extracted_at: string | null;
+  rejection_reason: string | null;
+  created_at: string | null;
+  customer: { first_name: string; last_name: string; email: string } | null;
+  order: { id: string; order_number: string; total: number } | null;
+  verifier: { first_name: string; last_name: string } | null;
 };
 
-type PaymentFilter = "all" | "pending" | "verified" | "rejected";
+type StatusFilter = "all" | "pending" | "extracted" | "verified" | "rejected";
 
-export function PaymentVerification() {
-  const [payments, setPayments] = useState<Payment[]>([]);
-  const [filteredPayments, setFilteredPayments] = useState<Payment[]>([]);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<PaymentFilter>("pending");
-  const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
-  const [proofDialogOpen, setProofDialogOpen] = useState(false);
-  const [verificationDialogOpen, setVerificationDialogOpen] = useState(false);
-  const [rejectionReason, setRejectionReason] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
-
-  // Load payments from database
-  useEffect(() => {
-    async function loadPayments() {
-      const supabase = createClient();
-
-      // In a real implementation, load from payments table with order and user data
-      // For now, simulate payment data
-      const mockPayments: Payment[] = [
-        {
-          id: "pay1",
-          order_id: "order1",
-          amount: 2500,
-          payment_method: "gcash",
-          payment_status: "pending",
-          payment_proof_url:
-            "https://via.placeholder.com/400x600/4CAF50/FFFFFF?text=GCash+Receipt",
-          transaction_reference: "GC-202602150001",
-          created_at: new Date(Date.now() - 3600000).toISOString(),
-          order_number: "ORD-20260215-001",
-          customer_name: "Juan Dela Cruz",
-          customer_email: "juan@example.com",
-        },
-        {
-          id: "pay2",
-          order_id: "order2",
-          amount: 1800,
-          payment_method: "bank_transfer",
-          payment_status: "pending",
-          payment_proof_url:
-            "https://via.placeholder.com/400x600/2196F3/FFFFFF?text=Bank+Transfer+Receipt",
-          transaction_reference: "BT-202602150002",
-          created_at: new Date(Date.now() - 7200000).toISOString(),
-          order_number: "ORD-20260215-002",
-          customer_name: "Maria Santos",
-          customer_email: "maria@example.com",
-        },
-        {
-          id: "pay3",
-          order_id: "order3",
-          amount: 3200,
-          payment_method: "maya",
-          payment_status: "verified",
-          payment_proof_url:
-            "https://via.placeholder.com/400x600/FF9800/FFFFFF?text=Maya+Receipt",
-          transaction_reference: "MA-202602140003",
-          created_at: new Date(Date.now() - 86400000).toISOString(),
-          verified_at: new Date(Date.now() - 82800000).toISOString(),
-          verified_by: "admin",
-          order_number: "ORD-20260214-003",
-          customer_name: "Pedro Garcia",
-          customer_email: "pedro@example.com",
-        },
-        {
-          id: "pay4",
-          order_id: "order4",
-          amount: 1500,
-          payment_method: "gcash",
-          payment_status: "rejected",
-          payment_proof_url:
-            "https://via.placeholder.com/400x600/F44336/FFFFFF?text=Invalid+Receipt",
-          transaction_reference: "GC-202602140004",
-          created_at: new Date(Date.now() - 172800000).toISOString(),
-          rejection_reason: "Receipt is unclear and cannot be verified",
-          order_number: "ORD-20260213-004",
-          customer_name: "Ana Lopez",
-          customer_email: "ana@example.com",
-        },
-        {
-          id: "pay5",
-          order_id: "order5",
-          amount: 4500,
-          payment_method: "bank_transfer",
-          payment_status: "pending",
-          payment_proof_url:
-            "https://via.placeholder.com/400x600/9C27B0/FFFFFF?text=Bank+Receipt",
-          transaction_reference: "BT-202602150005",
-          created_at: new Date(Date.now() - 1800000).toISOString(),
-          order_number: "ORD-20260215-005",
-          customer_name: "Carlos Reyes",
-          customer_email: "carlos@example.com",
-        },
-      ];
-
-      setPayments(mockPayments);
-      setFilteredPayments(
-        mockPayments.filter((p) => p.payment_status === "pending")
-      );
-      setIsLoading(false);
-    }
-
-    loadPayments();
-  }, []);
-
-  // Filter payments based on search and status
-  useEffect(() => {
-    let filtered = payments;
-
-    // Apply status filter
-    if (statusFilter !== "all") {
-      filtered = filtered.filter((p) => p.payment_status === statusFilter);
-    }
-
-    // Apply search filter
-    if (searchTerm) {
-      filtered = filtered.filter(
-        (payment) =>
-          payment.order_number
-            ?.toLowerCase()
-            .includes(searchTerm.toLowerCase()) ||
-          payment.customer_name
-            ?.toLowerCase()
-            .includes(searchTerm.toLowerCase()) ||
-          payment.customer_email
-            ?.toLowerCase()
-            .includes(searchTerm.toLowerCase()) ||
-          payment.transaction_reference
-            ?.toLowerCase()
-            .includes(searchTerm.toLowerCase())
-      );
-    }
-
-    setFilteredPayments(filtered);
-  }, [payments, searchTerm, statusFilter]);
-
-  // Get payment status badge
-  const getStatusBadge = (
-    status: Payment["payment_status"]
-  ): {
-    variant: "default" | "secondary" | "destructive" | "outline";
+const STATUS_CONFIG: Record<
+  string,
+  {
     label: string;
-    icon: any;
-  } => {
-    switch (status) {
-      case "pending":
-        return { variant: "secondary", label: "Pending Review", icon: Clock };
-      case "verified":
-        return { variant: "default", label: "Verified", icon: CheckCircle };
-      case "rejected":
-        return { variant: "destructive", label: "Rejected", icon: XCircle };
-      default:
-        return { variant: "outline", label: "Unknown", icon: AlertCircle };
-    }
-  };
-
-  // Get payment method icon and label
-  const getPaymentMethodInfo = (method: Payment["payment_method"]) => {
-    switch (method) {
-      case "gcash":
-        return { label: "GCash", color: "text-blue-600" };
-      case "maya":
-        return { label: "Maya", color: "text-green-600" };
-      case "bank_transfer":
-        return { label: "Bank Transfer", color: "text-purple-600" };
-      case "cod":
-        return { label: "Cash on Delivery", color: "text-gray-600" };
-      case "card":
-        return { label: "Credit/Debit Card", color: "text-orange-600" };
-      default:
-        return { label: "Unknown", color: "text-gray-600" };
-    }
-  };
-
-  // Handle payment verification
-  const handleVerifyPayment = async (paymentId: string) => {
-    try {
-      const supabase = createClient();
-
-      // In real implementation, update payment status in database
-      // For now, update local state
-      setPayments((prev) =>
-        prev.map((p) =>
-          p.id === paymentId
-            ? {
-                ...p,
-                payment_status: "verified",
-                verified_at: new Date().toISOString(),
-                verified_by: "current_user", // Get from auth
-              }
-            : p
-        )
-      );
-
-      setVerificationDialogOpen(false);
-      setSelectedPayment(null);
-
-      console.log("Payment verified:", paymentId);
-    } catch (error) {
-      console.error("Error verifying payment:", error);
-    }
-  };
-
-  // Handle payment rejection
-  const handleRejectPayment = async (paymentId: string, reason: string) => {
-    try {
-      const supabase = createClient();
-
-      // In real implementation, update payment status and send notification
-      setPayments((prev) =>
-        prev.map((p) =>
-          p.id === paymentId
-            ? {
-                ...p,
-                payment_status: "rejected",
-                rejection_reason: reason,
-              }
-            : p
-        )
-      );
-
-      setVerificationDialogOpen(false);
-      setSelectedPayment(null);
-      setRejectionReason("");
-
-      console.log("Payment rejected:", paymentId, reason);
-    } catch (error) {
-      console.error("Error rejecting payment:", error);
-    }
-  };
-
-  // Calculate stats
-  const pendingCount = payments.filter(
-    (p) => p.payment_status === "pending"
-  ).length;
-  const verifiedCount = payments.filter(
-    (p) => p.payment_status === "verified"
-  ).length;
-  const rejectedCount = payments.filter(
-    (p) => p.payment_status === "rejected"
-  ).length;
-  const pendingAmount = payments
-    .filter((p) => p.payment_status === "pending")
-    .reduce((sum, p) => sum + p.amount, 0);
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
-          <p className="text-sm text-muted-foreground">Loading payments...</p>
-        </div>
-      </div>
-    );
+    variant: "default" | "secondary" | "destructive" | "outline";
+    icon: React.ReactNode;
   }
+> = {
+  pending: {
+    label: "Pending",
+    variant: "secondary",
+    icon: <Clock className="h-3.5 w-3.5" />,
+  },
+  extracted: {
+    label: "Extracted",
+    variant: "default",
+    icon: <DollarSign className="h-3.5 w-3.5" />,
+  },
+  verified: {
+    label: "Verified",
+    variant: "default",
+    icon: <CheckCircle className="h-3.5 w-3.5" />,
+  },
+  rejected: {
+    label: "Rejected",
+    variant: "destructive",
+    icon: <XCircle className="h-3.5 w-3.5" />,
+  },
+};
+
+const METHOD_LABELS: Record<string, { label: string; color: string }> = {
+  gcash: { label: "GCash", color: "text-blue-600" },
+  maya: { label: "Maya", color: "text-green-600" },
+  bank_transfer: { label: "Bank Transfer", color: "text-purple-600" },
+  cod: { label: "Cash on Delivery", color: "text-gray-500" },
+  card: { label: "Credit / Debit Card", color: "text-orange-600" },
+};
+
+function StatusBadge({ status }: { status: string | null }) {
+  const cfg = STATUS_CONFIG[status ?? ""] ?? {
+    label: status ?? "Unknown",
+    variant: "outline" as const,
+    icon: <AlertCircle className="h-3.5 w-3.5" />,
+  };
+  return (
+    <Badge variant={cfg.variant} className="gap-1">
+      {cfg.icon}
+      {cfg.label}
+    </Badge>
+  );
+}
+
+interface PaymentVerificationProps {
+  initialProofs: PaymentProof[];
+}
+
+export function PaymentVerification({
+  initialProofs,
+}: PaymentVerificationProps) {
+  const router = useRouter();
+  const [proofs, setProofs] = useState<PaymentProof[]>(initialProofs);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("pending");
+  const [selectedProof, setSelectedProof] = useState<PaymentProof | null>(null);
+  const [proofDialogOpen, setProofDialogOpen] = useState(false);
+  const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Sync with server-fetched data
+  useEffect(() => {
+    setProofs(initialProofs);
+  }, [initialProofs]);
+
+  // Filtered list
+  const filtered = proofs.filter((p) => {
+    const matchesStatus = statusFilter === "all" || p.status === statusFilter;
+    if (!searchTerm) return matchesStatus;
+    const lower = searchTerm.toLowerCase();
+    return (
+      matchesStatus &&
+      (p.order?.order_number?.toLowerCase().includes(lower) ||
+        p.reference_number?.toLowerCase().includes(lower) ||
+        `${p.customer?.first_name ?? ""} ${p.customer?.last_name ?? ""}`
+          .toLowerCase()
+          .includes(lower) ||
+        p.customer?.email?.toLowerCase().includes(lower))
+    );
+  });
+
+  // Stats
+  const byStatus = (s: string) => proofs.filter((p) => p.status === s).length;
+  const pendingAmount = proofs
+    .filter((p) => p.status === "pending" || p.status === "extracted")
+    .reduce((sum, p) => sum + (p.amount ?? 0), 0);
+
+  const openProof = (proof: PaymentProof) => {
+    setSelectedProof(proof);
+    setProofDialogOpen(true);
+  };
+
+  const openReview = (proof: PaymentProof) => {
+    setSelectedProof(proof);
+    setRejectionReason("");
+    setReviewDialogOpen(true);
+  };
+
+  const handleVerify = async () => {
+    if (!selectedProof) return;
+    setIsSubmitting(true);
+    const result = await verifyPayment(
+      selectedProof.id,
+      selectedProof.order_id
+    );
+    setIsSubmitting(false);
+    if (result.success) {
+      toast.success("Payment verified — order marked as paid");
+      setReviewDialogOpen(false);
+      router.refresh();
+    } else {
+      toast.error(result.message ?? "Failed to verify payment");
+    }
+  };
+
+  const handleReject = async () => {
+    if (!selectedProof) return;
+    if (rejectionReason.trim().length < 10) {
+      toast.error(
+        "Please provide a more detailed rejection reason (min 10 chars)"
+      );
+      return;
+    }
+    setIsSubmitting(true);
+    const result = await rejectPayment(selectedProof.id, rejectionReason);
+    setIsSubmitting(false);
+    if (result.success) {
+      toast.success("Payment proof rejected");
+      setReviewDialogOpen(false);
+      router.refresh();
+    } else {
+      toast.error(result.message ?? "Failed to reject payment");
+    }
+  };
+
+  const pendingCount = byStatus("pending") + byStatus("extracted");
+  const verifiedCount = byStatus("verified");
+  const rejectedCount = byStatus("rejected");
 
   return (
     <div className="space-y-6">
-      {/* Payment Stats */}
-      <div className="grid gap-4 md:grid-cols-4">
+      {/* Header */}
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">
+          Payment Verification
+        </h1>
+        <p className="text-muted-foreground mt-1">
+          Review payment proofs submitted by customers and approve or reject
+          them
+        </p>
+      </div>
+
+      {/* Stats */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
+            <CardTitle className="text-xs font-medium text-muted-foreground">
               Pending Review
             </CardTitle>
             <Clock className="h-4 w-4 text-amber-500" />
@@ -337,14 +246,15 @@ export function PaymentVerification() {
               {pendingCount}
             </div>
             <p className="text-xs text-muted-foreground">
-              ₱{pendingAmount.toLocaleString()} total
+              {formatCurrency(pendingAmount)} pending
             </p>
           </CardContent>
         </Card>
-
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Verified</CardTitle>
+            <CardTitle className="text-xs font-medium text-muted-foreground">
+              Verified
+            </CardTitle>
             <CheckCircle className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
@@ -352,277 +262,431 @@ export function PaymentVerification() {
               {verifiedCount}
             </div>
             <p className="text-xs text-muted-foreground">
-              Successfully verified
+              Successfully approved
             </p>
           </CardContent>
         </Card>
-
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Rejected</CardTitle>
+            <CardTitle className="text-xs font-medium text-muted-foreground">
+              Rejected
+            </CardTitle>
             <XCircle className="h-4 w-4 text-red-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-600">
               {rejectedCount}
             </div>
-            <p className="text-xs text-muted-foreground">Needs resubmission</p>
+            <p className="text-xs text-muted-foreground">
+              Awaiting resubmission
+            </p>
           </CardContent>
         </Card>
-
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Total Payments
+            <CardTitle className="text-xs font-medium text-muted-foreground">
+              Total
             </CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{payments.length}</div>
-            <p className="text-xs text-muted-foreground">All transactions</p>
+            <div className="text-2xl font-bold">{proofs.length}</div>
+            <p className="text-xs text-muted-foreground">All submissions</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Search and Filters */}
-      <div className="flex flex-col md:flex-row gap-4">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search by order number, customer, or reference..."
+            placeholder="Order number, reference, customer…"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-10"
           />
         </div>
-
         <Select
           value={statusFilter}
-          onValueChange={(value: PaymentFilter) => setStatusFilter(value)}
+          onValueChange={(v) => setStatusFilter(v as StatusFilter)}
         >
-          <SelectTrigger className="w-50">
-            <Filter className="h-4 w-4 mr-2" />
+          <SelectTrigger className="w-48">
             <SelectValue placeholder="Filter by status" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Payments</SelectItem>
-            <SelectItem value="pending">Pending Review</SelectItem>
+            <SelectItem value="all">All Statuses</SelectItem>
+            <SelectItem value="pending">Pending</SelectItem>
+            <SelectItem value="extracted">Extracted</SelectItem>
             <SelectItem value="verified">Verified</SelectItem>
             <SelectItem value="rejected">Rejected</SelectItem>
           </SelectContent>
         </Select>
       </div>
 
-      {/* Payments Table */}
+      {/* Table */}
       <Card>
-        <CardHeader>
-          <CardTitle>Payment Verification</CardTitle>
-          <CardDescription>
-            Review and verify payment proofs from customers
-          </CardDescription>
+        <CardHeader className="pb-3">
+          <CardTitle>
+            Payment Proofs{" "}
+            <span className="text-muted-foreground font-normal text-base">
+              ({filtered.length})
+            </span>
+          </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0 overflow-x-auto">
           <Table>
             <TableHeader>
-              <TableRow>
+              <TableRow className="hover:bg-transparent">
                 <TableHead>Order</TableHead>
                 <TableHead>Customer</TableHead>
-                <TableHead>Payment Method</TableHead>
+                <TableHead>Method</TableHead>
                 <TableHead>Amount</TableHead>
                 <TableHead>Reference</TableHead>
                 <TableHead>Submitted</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
+                <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredPayments.map((payment) => {
-                const status = getStatusBadge(payment.payment_status);
-                const methodInfo = getPaymentMethodInfo(payment.payment_method);
-                const StatusIcon = status.icon;
-
-                return (
-                  <TableRow key={payment.id}>
-                    <TableCell>
-                      <div className="font-medium">{payment.order_number}</div>
-                    </TableCell>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">
-                          {payment.customer_name}
+              {filtered.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-12">
+                    <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                      <DollarSign className="h-8 w-8 opacity-30" />
+                      <p>
+                        {searchTerm || statusFilter !== "all"
+                          ? "No proofs match your filters."
+                          : "No payment proofs yet."}
+                      </p>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filtered.map((proof) => {
+                  const methodCfg = METHOD_LABELS[
+                    proof.payment_method ?? ""
+                  ] ?? {
+                    label: proof.payment_method ?? "—",
+                    color: "text-muted-foreground",
+                  };
+                  const isPending =
+                    proof.status === "pending" || proof.status === "extracted";
+                  return (
+                    <TableRow key={proof.id}>
+                      <TableCell>
+                        <div className="font-mono font-semibold text-sm">
+                          {proof.order?.order_number ?? "—"}
                         </div>
-                        <div className="text-sm text-muted-foreground">
-                          {payment.customer_email}
+                      </TableCell>
+                      <TableCell>
+                        <div className="font-medium text-sm">
+                          {proof.customer?.first_name}{" "}
+                          {proof.customer?.last_name}
                         </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <span className={methodInfo.color}>
-                        {methodInfo.label}
-                      </span>
-                    </TableCell>
-                    <TableCell className="font-bold">
-                      ₱{payment.amount.toLocaleString()}
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">
-                      {payment.transaction_reference || "N/A"}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1 text-sm">
-                        <Calendar className="h-3 w-3" />
-                        {new Date(payment.created_at).toLocaleDateString()}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {new Date(payment.created_at).toLocaleTimeString()}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={status.variant}
-                        className="flex items-center gap-1 w-fit"
-                      >
-                        <StatusIcon className="h-3 w-3" />
-                        {status.label}
-                      </Badge>
-                      {payment.payment_status === "rejected" &&
-                        payment.rejection_reason && (
-                          <div className="text-xs text-red-600 mt-1">
-                            {payment.rejection_reason}
-                          </div>
-                        )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        {payment.payment_proof_url && (
+                        <div className="text-xs text-muted-foreground">
+                          {proof.customer?.email}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span
+                          className={`text-sm font-medium ${methodCfg.color}`}
+                        >
+                          {methodCfg.label}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="font-semibold">
+                          {proof.amount != null
+                            ? formatCurrency(proof.amount)
+                            : "—"}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="font-mono text-xs">
+                          {proof.reference_number ?? "—"}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1 text-sm">
+                          <Calendar className="h-3 w-3 text-muted-foreground" />
+                          {new Date(
+                            proof.uploaded_at ?? proof.created_at ?? ""
+                          ).toLocaleDateString()}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {new Date(
+                            proof.uploaded_at ?? proof.created_at ?? ""
+                          ).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <StatusBadge status={proof.status} />
+                          {proof.status === "rejected" &&
+                            proof.rejection_reason && (
+                              <p className="text-xs text-destructive max-w-35 line-clamp-2">
+                                {proof.rejection_reason}
+                              </p>
+                            )}
+                          {proof.status === "verified" && proof.verifier && (
+                            <p className="text-xs text-muted-foreground">
+                              by {proof.verifier.first_name}{" "}
+                              {proof.verifier.last_name}
+                            </p>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1.5">
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => {
-                              setSelectedPayment(payment);
-                              setProofDialogOpen(true);
-                            }}
+                            className="h-8 px-2.5"
+                            onClick={() => openProof(proof)}
                           >
-                            <ImageIcon className="h-4 w-4" />
+                            <ZoomIn className="h-3.5 w-3.5" />
                           </Button>
-                        )}
-                        {payment.payment_status === "pending" && (
-                          <Button
-                            size="sm"
-                            onClick={() => {
-                              setSelectedPayment(payment);
-                              setVerificationDialogOpen(true);
-                            }}
-                          >
-                            Review
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+                          {isPending && (
+                            <Button
+                              size="sm"
+                              className="h-8 px-3 text-xs"
+                              onClick={() => openReview(proof)}
+                            >
+                              Review
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
 
-      {/* Payment Proof Dialog */}
+      {/* Proof Image Dialog */}
       <Dialog open={proofDialogOpen} onOpenChange={setProofDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Payment Proof</DialogTitle>
             <DialogDescription>
-              {selectedPayment && `Order: ${selectedPayment.order_number}`}
+              {selectedProof?.order?.order_number} ·{" "}
+              {selectedProof?.customer?.first_name}{" "}
+              {selectedProof?.customer?.last_name}
             </DialogDescription>
           </DialogHeader>
 
-          {selectedPayment?.payment_proof_url && (
+          {selectedProof && (
             <div className="space-y-4">
-              <img
-                src={selectedPayment.payment_proof_url}
-                alt="Payment Proof"
-                className="w-full rounded-lg border"
-              />
+              <div className="rounded-lg border overflow-hidden bg-muted/30 flex items-center justify-center min-h-50">
+                {selectedProof.image_url ? (
+                  <img
+                    src={selectedProof.image_url}
+                    alt="Payment proof"
+                    className="max-w-full max-h-[60vh] object-contain"
+                  />
+                ) : (
+                  <p className="text-sm text-muted-foreground py-12">
+                    No image uploaded
+                  </p>
+                )}
+              </div>
 
-              <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
                 <div>
-                  <span className="text-muted-foreground">Reference:</span>
-                  <div className="font-mono">
-                    {selectedPayment.transaction_reference}
-                  </div>
+                  <p className="text-muted-foreground">Reference</p>
+                  <p className="font-mono font-medium">
+                    {selectedProof.reference_number ?? "—"}
+                  </p>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Amount:</span>
-                  <div className="font-bold">
-                    ₱{selectedPayment.amount.toLocaleString()}
-                  </div>
+                  <p className="text-muted-foreground">Amount</p>
+                  <p className="font-bold text-base">
+                    {selectedProof.amount != null
+                      ? formatCurrency(selectedProof.amount)
+                      : "—"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Payment Method</p>
+                  <p className="font-medium">
+                    {METHOD_LABELS[selectedProof.payment_method ?? ""]?.label ??
+                      selectedProof.payment_method ??
+                      "—"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Status</p>
+                  <StatusBadge status={selectedProof.status} />
                 </div>
               </div>
 
-              <Button
-                className="w-full"
-                variant="outline"
-                onClick={() =>
-                  window.open(selectedPayment.payment_proof_url, "_blank")
-                }
-              >
-                <Download className="h-4 w-4 mr-2" />
-                Download Full Size
-              </Button>
+              {selectedProof.rejection_reason && (
+                <div className="rounded-md bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">
+                  <strong>Rejection reason:</strong>{" "}
+                  {selectedProof.rejection_reason}
+                </div>
+              )}
+
+              <Separator />
+
+              <div className="flex gap-2">
+                {selectedProof.image_url && (
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() =>
+                      window.open(selectedProof.image_url, "_blank")
+                    }
+                  >
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Open Full Size
+                  </Button>
+                )}
+                {(selectedProof.status === "pending" ||
+                  selectedProof.status === "extracted") && (
+                  <Button
+                    className="flex-1"
+                    onClick={() => {
+                      setProofDialogOpen(false);
+                      openReview(selectedProof);
+                    }}
+                  >
+                    Review Payment
+                  </Button>
+                )}
+              </div>
             </div>
           )}
         </DialogContent>
       </Dialog>
 
-      {/* Verification Dialog */}
-      <Dialog
-        open={verificationDialogOpen}
-        onOpenChange={setVerificationDialogOpen}
-      >
-        <DialogContent>
+      {/* Review Dialog */}
+      <Dialog open={reviewDialogOpen} onOpenChange={setReviewDialogOpen}>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Verify Payment</DialogTitle>
+            <DialogTitle>Review Payment</DialogTitle>
             <DialogDescription>
-              {selectedPayment &&
-                `Order: ${selectedPayment.order_number} - ₱${selectedPayment.amount.toLocaleString()}`}
+              <span className="font-mono font-medium">
+                {selectedProof?.order?.order_number}
+              </span>{" "}
+              ·{" "}
+              {selectedProof?.amount != null
+                ? formatCurrency(selectedProof.amount)
+                : ""}{" "}
+              via{" "}
+              {METHOD_LABELS[selectedProof?.payment_method ?? ""]?.label ??
+                selectedProof?.payment_method}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
-            <div className="flex gap-2">
-              <Button
-                className="flex-1"
-                onClick={() =>
-                  selectedPayment && handleVerifyPayment(selectedPayment.id)
-                }
-              >
-                <CheckCircle className="h-4 w-4 mr-2" />
-                Verify Payment
-              </Button>
-            </div>
+          {selectedProof && (
+            <div className="space-y-5 py-2">
+              <div className="rounded-lg border p-4 flex items-center gap-3">
+                <User className="h-5 w-5 text-muted-foreground shrink-0" />
+                <div>
+                  <p className="font-medium text-sm">
+                    {selectedProof.customer?.first_name}{" "}
+                    {selectedProof.customer?.last_name}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {selectedProof.customer?.email}
+                  </p>
+                </div>
+              </div>
 
-            <div className="border-t pt-4">
-              <label className="text-sm font-medium">Or Reject Payment</label>
-              <Input
-                className="mt-2"
-                placeholder="Enter rejection reason..."
-                value={rejectionReason}
-                onChange={(e) => setRejectionReason(e.target.value)}
-              />
+              {selectedProof.image_url && (
+                <div
+                  className="rounded-lg border overflow-hidden cursor-pointer group relative"
+                  onClick={() => {
+                    setReviewDialogOpen(false);
+                    openProof(selectedProof);
+                  }}
+                >
+                  <img
+                    src={selectedProof.image_url}
+                    alt="Proof thumbnail"
+                    className="w-full max-h-40 object-cover"
+                  />
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <ZoomIn className="h-6 w-6 text-white" />
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4 text-sm bg-muted/30 rounded-lg p-4">
+                <div>
+                  <p className="text-muted-foreground">Reference #</p>
+                  <p className="font-mono font-medium">
+                    {selectedProof.reference_number ?? "—"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Order Total</p>
+                  <p className="font-bold">
+                    {selectedProof.order?.total != null
+                      ? formatCurrency(selectedProof.order.total)
+                      : "—"}
+                  </p>
+                </div>
+              </div>
+
+              <Separator />
+
               <Button
-                className="w-full mt-2"
-                variant="destructive"
-                disabled={!rejectionReason}
-                onClick={() =>
-                  selectedPayment &&
-                  handleRejectPayment(selectedPayment.id, rejectionReason)
-                }
+                className="w-full"
+                disabled={isSubmitting}
+                onClick={handleVerify}
               >
-                <XCircle className="h-4 w-4 mr-2" />
-                Reject Payment
+                {isSubmitting ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <CheckCircle className="mr-2 h-4 w-4" />
+                )}
+                Approve &amp; Mark as Paid
               </Button>
+
+              <div className="space-y-2">
+                <Label htmlFor="rej-reason">Or reject with a reason</Label>
+                <Textarea
+                  id="rej-reason"
+                  placeholder="Describe why this proof is invalid (min 10 characters)…"
+                  rows={3}
+                  value={rejectionReason}
+                  onChange={(e) => setRejectionReason(e.target.value)}
+                />
+                <Button
+                  variant="destructive"
+                  className="w-full"
+                  disabled={isSubmitting || rejectionReason.trim().length < 10}
+                  onClick={handleReject}
+                >
+                  {isSubmitting ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <XCircle className="mr-2 h-4 w-4" />
+                  )}
+                  Reject Payment
+                </Button>
+              </div>
             </div>
-          </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setReviewDialogOpen(false)}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Inter, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
-
 const inter = Inter({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -16,9 +15,8 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "Vapour Lounge - Premium Vape Shop",
-  description:
-    "Trece Martires premier vape shop offering premium e-liquids, devices, and accessories with age verification and secure checkout.",
+  title: "13th Vapour Lounge",
+  description: "High quality vape products",
   keywords: [
     "vape",
     "e-liquid",
@@ -26,6 +24,9 @@ export const metadata: Metadata = {
     "vape devices",
     "Trece Martires",
   ],
+  icons: {
+    icon: "/favicon.ico",
+  },
 };
 
 export default function RootLayout({

@@ -62,6 +62,40 @@ export const useInfiniteProducts = (
   return useInfiniteQuery({
     queryKey: queryKeys.products.list(filters),
     queryFn: async ({ pageParam = 1 }) => {
+      // Use searchProducts if there's any filter applied (query, brand, price, or stock filter)
+      const hasFilters =
+        (filters.query && filters.query.length >= 2) ||
+        filters.brandId ||
+        filters.priceMin !== undefined ||
+        filters.priceMax !== undefined ||
+        filters.inStockOnly;
+
+      if (hasFilters) {
+        const result = await searchProducts({
+          query: filters.query || "",
+          categoryId: filters.categoryId,
+          brandId: filters.brandId,
+          priceMin: filters.priceMin,
+          priceMax: filters.priceMax,
+          inStockOnly: filters.inStockOnly,
+          page: pageParam as number,
+          limit,
+        });
+
+        if (!result.success) {
+          throw new Error(result.message || "Failed to search products");
+        }
+
+        const data = result.data as any;
+        return {
+          products: data.products || [],
+          totalCount: data.pagination?.total || 0,
+          currentPage: data.pagination?.page || 1,
+          totalPages: data.pagination?.totalPages || 1,
+        } as ProductsResponse;
+      }
+
+      // Otherwise use regular getProducts (no filters at all)
       const result = await getProducts(
         pageParam as number,
         limit,

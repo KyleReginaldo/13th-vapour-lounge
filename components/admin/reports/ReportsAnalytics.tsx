@@ -23,10 +23,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { createClient } from "@/lib/supabase/client";
 import {
-  ArrowDownRight,
-  ArrowUpRight,
+  usePaymentMethodBreakdown,
+  useSalesOverview,
+  useTopProducts,
+  type DateRange,
+} from "@/lib/hooks/useAnalytics";
+import { createClient } from "@/lib/supabase/client";
+import { useQuery } from "@tanstack/react-query";
+import {
   BarChart3,
   Calendar,
   DollarSign,
@@ -34,153 +39,90 @@ import {
   ShoppingCart,
   Users,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 
 type TimePeriod = "today" | "week" | "month" | "year";
 
-type SalesData = {
-  total_revenue: number;
-  total_orders: number;
-  average_order_value: number;
-  total_customers: number;
-  revenue_change: number; // percentage
-  orders_change: number;
-};
+function getDateRangeForPeriod(period: TimePeriod): DateRange | undefined {
+  const now = new Date();
+  const startDate = new Date();
 
-type TopProduct = {
-  name: string;
-  units_sold: number;
-  revenue: number;
-};
+  switch (period) {
+    case "today":
+      startDate.setHours(0, 0, 0, 0);
+      break;
+    case "week":
+      startDate.setDate(now.getDate() - 7);
+      break;
+    case "month":
+      startDate.setMonth(now.getMonth() - 1);
+      break;
+    case "year":
+      startDate.setFullYear(now.getFullYear() - 1);
+      break;
+  }
 
-type RecentOrder = {
-  id: string;
-  order_number: string;
-  customer_name: string;
-  total: number;
-  status: string;
-  created_at: string;
-};
+  return {
+    startDate: startDate.toISOString(),
+    endDate: now.toISOString(),
+  };
+}
 
 export function ReportsAnalytics() {
   const [period, setPeriod] = useState<TimePeriod>("month");
-  const [salesData, setSalesData] = useState<SalesData>({
-    total_revenue: 0,
-    total_orders: 0,
-    average_order_value: 0,
-    total_customers: 0,
-    revenue_change: 0,
-    orders_change: 0,
-  });
-  const [topProducts, setTopProducts] = useState<TopProduct[]>([]);
-  const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    async function loadData() {
+  const dateRange = useMemo(() => getDateRangeForPeriod(period), [period]);
+
+  // Fetch analytics data
+  const { data: salesOverview, isLoading: loadingSales } =
+    useSalesOverview(dateRange);
+  const { data: topProducts, isLoading: loadingProducts } = useTopProducts(
+    5,
+    dateRange
+  );
+  const { data: paymentBreakdown, isLoading: loadingPayments } =
+    usePaymentMethodBreakdown(dateRange);
+
+  // Fetch recent orders
+  const { data: recentOrders, isLoading: loadingOrders } = useQuery({
+    queryKey: ["recent-orders", 10],
+    queryFn: async () => {
       const supabase = createClient();
-
-      // Try to fetch real data
-      const { data: orders } = await supabase
+      const { data, error } = await supabase
         .from("orders")
-        .select("*")
-        .order("created_at", { ascending: false });
+        .select(
+          `
+          id,
+          order_number,
+          total,
+          status,
+          created_at,
+          users:user_id (
+            id,
+            email,
+            full_name
+          )
+        `
+        )
+        .order("created_at", { ascending: false })
+        .limit(10);
 
-      const { data: products } = await supabase.from("products").select("*");
+      if (error) throw error;
+      return data;
+    },
+  });
 
-      if (orders && orders.length > 0) {
-        const totalRevenue = orders.reduce(
-          (sum: number, o: any) => sum + (o.total_price || o.total || 0),
-          0
-        );
-        const totalOrders = orders.length;
+  const isLoading =
+    loadingSales || loadingProducts || loadingPayments || loadingOrders;
 
-        setSalesData({
-          total_revenue: totalRevenue,
-          total_orders: totalOrders,
-          average_order_value: totalOrders > 0 ? totalRevenue / totalOrders : 0,
-          total_customers: new Set(orders.map((o: any) => o.user_id)).size,
-          revenue_change: 15.2,
-          orders_change: 8.5,
-        });
-
-        setRecentOrders(
-          orders.slice(0, 10).map((o: any) => ({
-            id: o.id,
-            order_number: o.order_number || `ORD-${o.id.substring(0, 8)}`,
-            customer_name: "Customer",
-            total: o.total_price || o.total || 0,
-            status: o.status || "pending",
-            created_at: o.created_at,
-          }))
-        );
-      } else {
-        // Use mock data
-        setSalesData({
-          total_revenue: 285000,
-          total_orders: 156,
-          average_order_value: 1827,
-          total_customers: 89,
-          revenue_change: 15.2,
-          orders_change: 8.5,
-        });
-
-        setRecentOrders([
-          {
-            id: "1",
-            order_number: "ORD-20260215-001",
-            customer_name: "Juan Dela Cruz",
-            total: 2500,
-            status: "completed",
-            created_at: new Date(Date.now() - 3600000).toISOString(),
-          },
-          {
-            id: "2",
-            order_number: "ORD-20260215-002",
-            customer_name: "Maria Santos",
-            total: 1800,
-            status: "processing",
-            created_at: new Date(Date.now() - 7200000).toISOString(),
-          },
-          {
-            id: "3",
-            order_number: "ORD-20260214-003",
-            customer_name: "Pedro Garcia",
-            total: 3200,
-            status: "completed",
-            created_at: new Date(Date.now() - 86400000).toISOString(),
-          },
-          {
-            id: "4",
-            order_number: "ORD-20260214-004",
-            customer_name: "Ana Lopez",
-            total: 1500,
-            status: "pending",
-            created_at: new Date(Date.now() - 172800000).toISOString(),
-          },
-          {
-            id: "5",
-            order_number: "ORD-20260213-005",
-            customer_name: "Carlos Reyes",
-            total: 4500,
-            status: "completed",
-            created_at: new Date(Date.now() - 259200000).toISOString(),
-          },
-        ]);
-      }
-
-      setTopProducts([
-        { name: "VUSE Pebble Disposable", units_sold: 145, revenue: 72355 },
-        { name: "VUSE ePod 2+ Device", units_sold: 67, revenue: 60233 },
-        { name: "VUSE Go Max Disposable", units_sold: 89, revenue: 44411 },
-        { name: "ePod Pods - Mint", units_sold: 120, revenue: 30000 },
-        { name: "VUSE Vibe Device", units_sold: 42, revenue: 29358 },
-      ]);
-
-      setIsLoading(false);
-    }
-    loadData();
-  }, [period]);
+  // Calculate unique customers from recent orders
+  const uniqueCustomers = useMemo(() => {
+    if (!recentOrders) return 0;
+    const userIds = new Set(
+      recentOrders.map((order: any) => order.users?.id).filter(Boolean)
+    );
+    return userIds.size;
+  }, [recentOrders]);
 
   if (isLoading) {
     return (
@@ -207,7 +149,7 @@ export function ReportsAnalytics() {
           value={period}
           onValueChange={(value: TimePeriod) => setPeriod(value)}
         >
-          <SelectTrigger className="w-[180px]">
+          <SelectTrigger className="w-45">
             <Calendar className="h-4 w-4 mr-2" />
             <SelectValue />
           </SelectTrigger>
@@ -229,26 +171,11 @@ export function ReportsAnalytics() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              ₱{salesData.total_revenue.toLocaleString()}
+              ₱{(salesOverview?.totalRevenue || 0).toLocaleString()}
             </div>
-            <div className="flex items-center gap-1 text-xs">
-              {salesData.revenue_change >= 0 ? (
-                <>
-                  <ArrowUpRight className="h-3 w-3 text-green-600" />
-                  <span className="text-green-600">
-                    +{salesData.revenue_change}%
-                  </span>
-                </>
-              ) : (
-                <>
-                  <ArrowDownRight className="h-3 w-3 text-red-600" />
-                  <span className="text-red-600">
-                    {salesData.revenue_change}%
-                  </span>
-                </>
-              )}
-              <span className="text-muted-foreground">vs last period</span>
-            </div>
+            <p className="text-xs text-muted-foreground">
+              From {salesOverview?.paidOrders || 0} paid orders
+            </p>
           </CardContent>
         </Card>
 
@@ -258,25 +185,12 @@ export function ReportsAnalytics() {
             <ShoppingCart className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{salesData.total_orders}</div>
-            <div className="flex items-center gap-1 text-xs">
-              {salesData.orders_change >= 0 ? (
-                <>
-                  <ArrowUpRight className="h-3 w-3 text-green-600" />
-                  <span className="text-green-600">
-                    +{salesData.orders_change}%
-                  </span>
-                </>
-              ) : (
-                <>
-                  <ArrowDownRight className="h-3 w-3 text-red-600" />
-                  <span className="text-red-600">
-                    {salesData.orders_change}%
-                  </span>
-                </>
-              )}
-              <span className="text-muted-foreground">vs last period</span>
+            <div className="text-2xl font-bold">
+              {salesOverview?.totalOrders || 0}
             </div>
+            <p className="text-xs text-muted-foreground">
+              {salesOverview?.pendingOrders || 0} pending
+            </p>
           </CardContent>
         </Card>
 
@@ -289,7 +203,7 @@ export function ReportsAnalytics() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              ₱{salesData.average_order_value.toLocaleString()}
+              ₱{(salesOverview?.averageOrderValue || 0).toLocaleString()}
             </div>
             <p className="text-xs text-muted-foreground">Per transaction</p>
           </CardContent>
@@ -301,9 +215,7 @@ export function ReportsAnalytics() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {salesData.total_customers}
-            </div>
+            <div className="text-2xl font-bold">{uniqueCustomers}</div>
             <p className="text-xs text-muted-foreground">Unique buyers</p>
           </CardContent>
         </Card>
@@ -317,33 +229,39 @@ export function ReportsAnalytics() {
               <Package className="h-5 w-5" />
               Top Selling Products
             </CardTitle>
-            <CardDescription>Best performers by revenue</CardDescription>
+            <CardDescription>Best performers by quantity sold</CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>#</TableHead>
-                  <TableHead>Product</TableHead>
-                  <TableHead>Units</TableHead>
-                  <TableHead>Revenue</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {topProducts.map((product, index) => (
-                  <TableRow key={index}>
-                    <TableCell className="font-bold">{index + 1}</TableCell>
-                    <TableCell className="font-medium">
-                      {product.name}
-                    </TableCell>
-                    <TableCell>{product.units_sold}</TableCell>
-                    <TableCell className="font-bold">
-                      ₱{product.revenue.toLocaleString()}
-                    </TableCell>
+            {topProducts && topProducts.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>#</TableHead>
+                    <TableHead>Product</TableHead>
+                    <TableHead>Units</TableHead>
+                    <TableHead>Revenue</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {topProducts.map((product: any, index: number) => (
+                    <TableRow key={product.productId}>
+                      <TableCell className="font-bold">{index + 1}</TableCell>
+                      <TableCell className="font-medium">
+                        {product.name}
+                      </TableCell>
+                      <TableCell>{product.totalQuantity}</TableCell>
+                      <TableCell className="font-bold">
+                        ₱{product.totalRevenue.toLocaleString()}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                No product sales data available for this period
+              </p>
+            )}
           </CardContent>
         </Card>
 
@@ -357,42 +275,53 @@ export function ReportsAnalytics() {
             <CardDescription>Latest transactions</CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Order</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Total</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {recentOrders.map((order) => (
-                  <TableRow key={order.id}>
-                    <TableCell className="font-mono text-xs">
-                      {order.order_number}
-                    </TableCell>
-                    <TableCell>{order.customer_name}</TableCell>
-                    <TableCell className="font-bold">
-                      ₱{order.total.toLocaleString()}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          order.status === "completed"
-                            ? "default"
-                            : order.status === "processing"
-                              ? "secondary"
-                              : "outline"
-                        }
-                      >
-                        {order.status}
-                      </Badge>
-                    </TableCell>
+            {recentOrders && recentOrders.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Order</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead>Total</TableHead>
+                    <TableHead>Status</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {recentOrders.map((order: any) => (
+                    <TableRow key={order.id}>
+                      <TableCell className="font-mono text-xs">
+                        {order.order_number ||
+                          `ORD-${order.id.substring(0, 8)}`}
+                      </TableCell>
+                      <TableCell>
+                        {order.users?.full_name ||
+                          order.users?.email?.split("@")[0] ||
+                          "Guest"}
+                      </TableCell>
+                      <TableCell className="font-bold">
+                        ₱{order.total.toLocaleString()}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            order.status === "completed"
+                              ? "default"
+                              : order.status === "processing"
+                                ? "secondary"
+                                : "outline"
+                          }
+                        >
+                          {order.status}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                No recent orders found
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -404,52 +333,45 @@ export function ReportsAnalytics() {
           <CardDescription>Revenue breakdown by payment type</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[
-              {
-                method: "GCash",
-                amount: 98000,
-                percentage: 34,
-                color: "bg-blue-500",
-              },
-              {
-                method: "Cash",
-                amount: 85000,
-                percentage: 30,
-                color: "bg-green-500",
-              },
-              {
-                method: "Maya",
-                amount: 62000,
-                percentage: 22,
-                color: "bg-purple-500",
-              },
-              {
-                method: "Bank Transfer",
-                amount: 40000,
-                percentage: 14,
-                color: "bg-orange-500",
-              },
-            ].map((payment) => (
-              <div key={payment.method} className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="font-medium">{payment.method}</span>
-                  <span className="text-muted-foreground">
-                    {payment.percentage}%
-                  </span>
-                </div>
-                <div className="h-2 rounded-full bg-muted overflow-hidden">
-                  <div
-                    className={`h-full rounded-full ${payment.color}`}
-                    style={{ width: `${payment.percentage}%` }}
-                  />
-                </div>
-                <div className="text-sm font-bold">
-                  ₱{payment.amount.toLocaleString()}
-                </div>
-              </div>
-            ))}
-          </div>
+          {paymentBreakdown && paymentBreakdown.length > 0 ? (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {paymentBreakdown.map((payment: any, index: number) => {
+                const colors = [
+                  "bg-blue-500",
+                  "bg-green-500",
+                  "bg-purple-500",
+                  "bg-orange-500",
+                  "bg-pink-500",
+                  "bg-indigo-500",
+                ];
+                return (
+                  <div key={payment.paymentMethod} className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="font-medium capitalize">
+                        {payment.paymentMethod || "Unknown"}
+                      </span>
+                      <span className="text-muted-foreground">
+                        {payment.percentage.toFixed(1)}%
+                      </span>
+                    </div>
+                    <div className="h-2 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${colors[index % colors.length]}`}
+                        style={{ width: `${payment.percentage}%` }}
+                      />
+                    </div>
+                    <div className="text-sm font-bold">
+                      ₱{payment.totalRevenue.toLocaleString()}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-8">
+              No payment data available for this period
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>

@@ -2,7 +2,7 @@
 
 ## Research Overview
 
-Analysis of successful e-commerce platforms to identify UI/UX patterns for Vapour Lounge.
+Analysis of successful e-commerce platforms to identify UI/UX patterns for 13th Vapour Lounge.
 
 ---
 
@@ -44,7 +44,7 @@ Analysis of successful e-commerce platforms to identify UI/UX patterns for Vapou
 - Search bar prominent at top
 - Filter/Sort always visible when browsing
 
-### Inspirations for Vapour Lounge
+### Inspirations for 13th Vapour Lounge
 
 ✓ Use countdown timers for limited-time promotions
 ✓ Show "X sold today" for popular products
@@ -89,7 +89,7 @@ Analysis of successful e-commerce platforms to identify UI/UX patterns for Vapou
 - Real-time validation
 - Order confirmation with tracking number
 
-### Inspirations for Vapour Lounge
+### Inspirations for 13th Vapour Lounge
 
 ✓ Variant selector for nicotine levels & flavors (visual chips)
 ✓ Dual CTA buttons: "Add to Cart" + "Buy Now"
@@ -130,7 +130,7 @@ Analysis of successful e-commerce platforms to identify UI/UX patterns for Vapou
 - Customer images in reviews
 - "Ask a question" section
 
-### Inspirations for Vapour Lounge
+### Inspirations for 13th Vapour Lounge
 
 ✓ Multi-select filters (brand, nicotine level, flavor profile)
 ✓ Star rating distribution visualization
@@ -188,7 +188,7 @@ Analysis of successful e-commerce platforms to identify UI/UX patterns for Vapou
   - Techy: Space Grotesk + DM Sans
 - **Readable Body Text**: 16px minimum, 1.5-1.7 line height
 
-### Inspirations for Vapour Lounge
+### Inspirations for 13th Vapour Lounge
 
 ✓ Implement glassmorphism for modal dialogs
 ✓ Add micro-interactions for cart actions
@@ -210,7 +210,7 @@ Analysis of successful e-commerce platforms to identify UI/UX patterns for Vapou
    - Accent: Electric Blue (#3B82F6)
    - Neutral: Slate grays
 
-2. **Bold & Vibrant** (Recommended for Vapour Lounge)
+2. **Bold & Vibrant** (Recommended for 13th Vapour Lounge)
    - Primary: Gradient (Purple to Pink)
    - Secondary: Bright Orange (#F97316)
    - Accent: Lime Green (#84CC16)
@@ -256,7 +256,7 @@ Analysis of successful e-commerce platforms to identify UI/UX patterns for Vapou
 └────────────────────────────────────────┘
 ```
 
-### Inspirations for Vapour Lounge
+### Inspirations for 13th Vapour Lounge
 
 ✓ Use gradient purple-to-pink theme for premium feel
 ✓ Implement sidebar filters with live count updates
@@ -309,7 +309,7 @@ Icons + Labels (5 max)
 - Optimistic UI updates (instant feedback)
 - Cache frequently accessed data
 
-### Inspirations for Vapour Lounge
+### Inspirations for 13th Vapour Lounge
 
 ✓ Bottom nav for customer mobile app
 ✓ Swipe to delete in cart
@@ -368,7 +368,7 @@ Icons + Labels (5 max)
 - Multi-step forms with progress bar
 - Auto-save drafts
 
-### Inspirations for Vapour Lounge
+### Inspirations for 13th Vapour Lounge
 
 ✓ Collapsible sidebar for admin/staff
 ✓ KPI cards on dashboard (sales, orders, low stock)
@@ -412,7 +412,7 @@ Icons + Labels (5 max)
 - Provide pause/stop controls
 - No flashing content (seizure risk)
 
-### Inspirations for Vapour Lounge
+### Inspirations for 13th Vapour Lounge
 
 ✓ Test all colors with contrast checker
 ✓ Ensure keyboard-only navigation works
@@ -421,7 +421,7 @@ Icons + Labels (5 max)
 
 ---
 
-## 9. Recommended Design System for Vapour Lounge
+## 9. Recommended Design System for 13th Vapour Lounge
 
 ### Color Palette
 

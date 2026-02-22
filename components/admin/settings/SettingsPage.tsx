@@ -1,5 +1,6 @@
 "use client";
 
+import { updateShopSettings } from "@/app/actions/settings";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,43 +30,110 @@ import {
   Shield,
   Store,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { toast } from "sonner";
+import { BusinessHoursManager } from "./BusinessHoursManager";
+import { FeatureToggles } from "./FeatureToggles";
+import { LegalDocumentsManager } from "./LegalDocumentsManager";
 
-export function SettingsPage() {
+interface SettingsPageProps {
+  initialSettings: Record<string, any>;
+}
+
+export function SettingsPage({ initialSettings }: SettingsPageProps) {
+  const router = useRouter();
+
+  const s = initialSettings ?? {};
+
   // General settings
-  const [shopName, setShopName] = useState("Vapour Lounge");
-  const [shopEmail, setShopEmail] = useState("info@vapourlounge.com");
-  const [shopPhone, setShopPhone] = useState("+63 917 000 0000");
-  const [shopAddress, setShopAddress] = useState(
-    "123 Vape Street, BGC, Taguig"
+  const [shopName, setShopName] = useState(s.shop_name ?? "13th Vapour Lounge");
+  const [shopEmail, setShopEmail] = useState(
+    s.shop_email ?? "info@vapourlounge.com"
   );
-  const [currency, setCurrency] = useState("PHP");
-  const [taxRate, setTaxRate] = useState("12");
+  const [shopPhone, setShopPhone] = useState(
+    s.shop_phone ?? "+63 917 000 0000"
+  );
+  const [shopAddress, setShopAddress] = useState(
+    s.shop_address ?? "123 Vape Street, BGC, Taguig"
+  );
+  const [currency, setCurrency] = useState(s.currency ?? "PHP");
+  const [taxRate, setTaxRate] = useState(String(s.tax_rate ?? "12"));
 
   // Payment settings
-  const [gcashEnabled, setGcashEnabled] = useState(true);
-  const [mayaEnabled, setMayaEnabled] = useState(true);
-  const [bankTransferEnabled, setBankTransferEnabled] = useState(true);
-  const [codEnabled, setCodEnabled] = useState(true);
-  const [gcashNumber, setGcashNumber] = useState("0917 123 4567");
-  const [mayaNumber, setMayaNumber] = useState("0918 234 5678");
-  const [bankName, setBankName] = useState("BDO");
-  const [bankAccountNumber, setBankAccountNumber] = useState("1234567890");
-  const [bankAccountName, setBankAccountName] = useState("Vapour Lounge Inc.");
+  const [gcashEnabled, setGcashEnabled] = useState(s.gcash_enabled ?? true);
+  const [mayaEnabled, setMayaEnabled] = useState(s.maya_enabled ?? true);
+  const [bankTransferEnabled, setBankTransferEnabled] = useState(
+    s.bank_transfer_enabled ?? true
+  );
+  const [codEnabled, setCodEnabled] = useState(s.allow_cod ?? true);
+  const [gcashNumber, setGcashNumber] = useState(
+    s.gcash_number ?? "0917 123 4567"
+  );
+  const [mayaNumber, setMayaNumber] = useState(
+    s.maya_number ?? "0918 234 5678"
+  );
+  const [bankName, setBankName] = useState(s.bank_name ?? "BDO");
+  const [bankAccountNumber, setBankAccountNumber] = useState(
+    s.bank_account_number ?? "1234567890"
+  );
+  const [bankAccountName, setBankAccountName] = useState(
+    s.bank_account_name ?? "13th Vapour Lounge Inc."
+  );
 
   // Notification settings
-  const [emailOrderNotifs, setEmailOrderNotifs] = useState(true);
-  const [emailLowStockNotifs, setEmailLowStockNotifs] = useState(true);
-  const [emailPaymentNotifs, setEmailPaymentNotifs] = useState(true);
-  const [lowStockThreshold, setLowStockThreshold] = useState("10");
+  const [emailOrderNotifs, setEmailOrderNotifs] = useState(
+    s.email_order_notifications ?? true
+  );
+  const [emailLowStockNotifs, setEmailLowStockNotifs] = useState(
+    s.email_low_stock_notifications ?? true
+  );
+  const [emailPaymentNotifs, setEmailPaymentNotifs] = useState(
+    s.email_payment_notifications ?? true
+  );
+  const [lowStockThreshold, setLowStockThreshold] = useState(
+    String(s.low_stock_threshold ?? "10")
+  );
 
   const [isSaving, setIsSaving] = useState(false);
 
-  const handleSave = async () => {
+  const handleSave = async (section?: string) => {
     setIsSaving(true);
-    // In real implementation, save to database
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    setIsSaving(false);
+    try {
+      const result = await updateShopSettings({
+        shop_name: shopName,
+        shop_email: shopEmail,
+        shop_phone: shopPhone,
+        shop_address: shopAddress,
+        currency,
+        tax_rate: parseFloat(taxRate) || 0,
+        gcash_enabled: gcashEnabled,
+        gcash_number: gcashNumber,
+        maya_enabled: mayaEnabled,
+        maya_number: mayaNumber,
+        bank_transfer_enabled: bankTransferEnabled,
+        bank_name: bankName,
+        bank_account_number: bankAccountNumber,
+        bank_account_name: bankAccountName,
+        allow_cod: codEnabled,
+        email_order_notifications: emailOrderNotifs,
+        email_low_stock_notifications: emailLowStockNotifs,
+        email_payment_notifications: emailPaymentNotifs,
+        low_stock_threshold: parseInt(lowStockThreshold) || 10,
+      });
+      if (result?.success) {
+        toast.success(
+          section ? `${section} settings saved` : "Settings saved successfully"
+        );
+        router.refresh();
+      } else {
+        toast.error(result?.message ?? "Failed to save settings");
+      }
+    } catch {
+      toast.error("Failed to save settings");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -172,12 +240,21 @@ export function SettingsPage() {
                 </div>
               </div>
 
-              <Button onClick={handleSave} disabled={isSaving}>
+              <Button onClick={() => handleSave("General")} disabled={isSaving}>
                 <Save className="h-4 w-4 mr-2" />
                 {isSaving ? "Saving..." : "Save Changes"}
               </Button>
             </CardContent>
           </Card>
+
+          {/* Business Hours */}
+          <BusinessHoursManager />
+
+          {/* Feature Toggles */}
+          <FeatureToggles />
+
+          {/* Legal Documents */}
+          <LegalDocumentsManager />
         </TabsContent>
 
         {/* Payment Settings */}
@@ -314,7 +391,10 @@ export function SettingsPage() {
                   </div>
                 </div>
 
-                <Button onClick={handleSave} disabled={isSaving}>
+                <Button
+                  onClick={() => handleSave("Payment")}
+                  disabled={isSaving}
+                >
                   <Save className="h-4 w-4 mr-2" />
                   {isSaving ? "Saving..." : "Save Payment Settings"}
                 </Button>
@@ -398,7 +478,10 @@ export function SettingsPage() {
                 </div>
               </div>
 
-              <Button onClick={handleSave} disabled={isSaving}>
+              <Button
+                onClick={() => handleSave("Notification")}
+                disabled={isSaving}
+              >
                 <Save className="h-4 w-4 mr-2" />
                 {isSaving ? "Saving..." : "Save Notification Settings"}
               </Button>

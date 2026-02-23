@@ -53,7 +53,7 @@ export function OrderSummary({
         <div className="space-y-4 max-h-[400px] overflow-y-auto mb-6">
           {items.map((item) => {
             const imageUrl =
-              item.product.product_images[0]?.url || "/placeholder-product.png";
+              item.product.product_images[0]?.url || "/logo.jpg";
             const price = item.variant?.price || item.product.base_price;
 
             return (

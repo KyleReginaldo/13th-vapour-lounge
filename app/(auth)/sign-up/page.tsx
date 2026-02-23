@@ -23,7 +23,8 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
-
+import Logo from '../../../public/logo.jpg'
+import Image from "next/image";
 function SubmitButton() {
   const { pending } = useFormStatus();
   return (
@@ -124,8 +125,11 @@ function SignUpForm() {
       {/* Mobile logo */}
       <div className="lg:hidden p-6">
         <Link href="/" className="inline-flex items-center gap-2">
-          <div className="w-7 h-7 rounded-md bg-[#0A0A0A] flex items-center justify-center">
-            <Zap className="w-3.5 h-3.5 text-white" />
+          <div className="w-8 h-8 rounded-md bg-[#0A0A0A] flex items-center justify-center">
+            <Image src={Logo}
+              alt="13th Vapour Lounge Logo"
+              className="w-8 h-8 object-contain"
+            />
           </div>
           <span className="font-semibold text-[#0A0A0A] text-base">
             13th Vapour Lounge
@@ -590,9 +594,12 @@ export default function SignUpPage() {
         />
         <div className="relative z-10 flex flex-col h-full p-12 xl:p-16">
           <Link href="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center">
-              <Zap className="w-4 h-4 text-[#0A0A0A]" />
-            </div>
+            <div className="w-8 h-8 rounded-md bg-[#0A0A0A] flex items-center justify-center">
+            <Image src={Logo}
+              alt="13th Vapour Lounge Logo"
+              className="w-8 h-8 object-contain"
+            />
+          </div>
             <span className="text-white font-semibold text-lg tracking-tight">
               13th Vapour Lounge
             </span>

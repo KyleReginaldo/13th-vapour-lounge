@@ -41,7 +41,7 @@ export const CartItem = ({ item, className }: CartItemProps) => {
   // Get primary image or first image
   const primaryImage = product.product_images?.find((img) => img.is_primary);
   const imageUrl =
-    primaryImage?.url || product.product_images?.[0]?.url || "/placeholder.png";
+    primaryImage?.url || product.product_images?.[0]?.url || "/logo.jpg";
 
   const handleQuantityChange = (newQuantity: number) => {
     if (newQuantity < 1) return;

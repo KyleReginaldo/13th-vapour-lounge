@@ -1,21 +1,33 @@
-import { getBrands, getCategories } from "@/app/actions/categories-brands";
 import { ProductsContent } from "@/components/product/ProductsContent";
+import { createClient } from "@/lib/supabase/server";
 import { Suspense } from "react";
 
 export default async function ProductsPage() {
-  const [categoriesResult, brandsResult] = await Promise.all([
-    getCategories(),
-    getBrands(),
+  const supabase = await createClient();
+
+  const [{ data: categoriesData }, { data: brandsData }] = await Promise.all([
+    supabase
+      .from("categories")
+      .select("id, name, slug")
+      .order("sort_order", { ascending: true })
+      .order("name", { ascending: true }),
+    supabase
+      .from("brands")
+      .select("id, name, slug")
+      .order("name", { ascending: true }),
   ]);
 
-  const categories = (
-    (categoriesResult?.data as { id: string; name: string; slug: string }[]) ??
-    []
-  ).map((c) => ({ id: c.id, name: c.name, slug: c.slug }));
+  const categories = (categoriesData ?? []).map((c) => ({
+    id: c.id,
+    name: c.name,
+    slug: c.slug,
+  }));
 
-  const brands = (
-    (brandsResult?.data as { id: string; name: string; slug: string }[]) ?? []
-  ).map((b) => ({ id: b.id, name: b.name, slug: b.slug }));
+  const brands = (brandsData ?? []).map((b) => ({
+    id: b.id,
+    name: b.name,
+    slug: b.slug,
+  }));
 
   return (
     <Suspense

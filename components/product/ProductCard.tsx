@@ -62,7 +62,7 @@ export const ProductCard = ({
     : false;
 
   // Fallback image
-  const imageUrl = product.primary_image || "/images/placeholder-product.jpg";
+  const imageUrl = product.primary_image || "/logo.jpg";
   const rating = product.average_rating ?? 0;
   const reviewCount = product.total_reviews ?? 0;
 
@@ -192,7 +192,7 @@ export const ProductCardCompact = ({
   product,
   className,
 }: ProductCardProps) => {
-  const imageUrl = product.primary_image || "/images/placeholder-product.jpg";
+  const imageUrl = product.primary_image || "/logo.jpg";
 
   // Calculate discount percentage
   const hasDiscount =

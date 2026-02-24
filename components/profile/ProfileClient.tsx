@@ -1,8 +1,10 @@
 "use client";
 
 import {
-  changePassword,
+  requestPasswordChangeOTP,
   updateProfile,
+  verifyPasswordChangeOTP,
+  type PasswordChangeState,
   type ProfileOrder,
 } from "@/app/actions/profile";
 import { Button } from "@/components/ui/button";
@@ -19,8 +21,10 @@ import {
   KeyRound,
   Loader2,
   Lock,
+  Mail,
   Package,
   Phone,
+  RotateCcw,
   ShieldCheck,
   ShoppingBag,
   User,
@@ -28,7 +32,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -295,6 +299,19 @@ function SettingsTab({ user }: { user: UserWithRole }) {
   const inputCls =
     "h-10 text-[14px] rounded-xl border-[1.5px] border-[#E8E8E8] bg-white placeholder:text-[#CDCDCD] focus-visible:border-[#0A0A0A] focus-visible:ring-0 focus-visible:shadow-[0_0_0_3px_rgba(10,10,10,0.06)] transition-all";
 
+  // Two-step password change state
+  const [requestState, requestAction] = useActionState<
+    PasswordChangeState,
+    FormData
+  >(requestPasswordChangeOTP, { status: "idle" });
+  const [verifyState, verifyAction] = useActionState<
+    PasswordChangeState,
+    FormData
+  >(verifyPasswordChangeOTP, { status: "idle" });
+
+  const otpStep = requestState.status === "otp_sent";
+  const passwordChanged = verifyState.status === "success";
+
   return (
     <div className="space-y-6">
       {/* Edit profile */}
@@ -401,80 +418,169 @@ function SettingsTab({ user }: { user: UserWithRole }) {
           </p>
           <p className="text-[13px] text-[#ADADAD]">Keep your account secure</p>
         </div>
-        <form action={changePassword} className="p-6 space-y-4">
-          <div className="space-y-1.5">
-            <Label
-              htmlFor="currentPassword"
-              className="text-[13px] font-medium text-[#3D3D3D]"
-            >
-              Current Password
-            </Label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#ADADAD]" />
-              <Input
-                id="currentPassword"
-                name="currentPassword"
-                type={showCurrentPw ? "text" : "password"}
-                required
-                className={cn(inputCls, "pl-9 pr-10")}
-              />
-              <button
-                type="button"
-                onClick={() => setShowCurrentPw(!showCurrentPw)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#ADADAD] hover:text-[#3D3D3D] transition-colors text-xs"
+
+        {passwordChanged ? (
+          /* ── Success state ── */
+          <div className="p-6 flex flex-col items-center gap-3 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-50">
+              <CheckCircle2 className="h-6 w-6 text-green-500" />
+            </div>
+            <p className="font-semibold text-[#0F0F0F]">Password changed!</p>
+            <p className="text-[13px] text-[#ADADAD]">
+              Your password has been updated successfully.
+            </p>
+          </div>
+        ) : !otpStep ? (
+          /* ── Step 1: Enter current + new passwords ── */
+          <form action={requestAction} className="p-6 space-y-4">
+            {requestState.status === "error" && (
+              <div className="flex items-start gap-2.5 rounded-xl bg-red-50 border border-red-100 px-4 py-3">
+                <AlertCircle className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
+                <p className="text-[13px] text-red-700">
+                  {requestState.message}
+                </p>
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label
+                htmlFor="currentPassword"
+                className="text-[13px] font-medium text-[#3D3D3D]"
               >
-                {showCurrentPw ? "Hide" : "Show"}
-              </button>
+                Current Password
+              </Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#ADADAD]" />
+                <Input
+                  id="currentPassword"
+                  name="currentPassword"
+                  type={showCurrentPw ? "text" : "password"}
+                  required
+                  className={cn(inputCls, "pl-9 pr-10")}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowCurrentPw(!showCurrentPw)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#ADADAD] hover:text-[#3D3D3D] transition-colors text-xs"
+                >
+                  {showCurrentPw ? "Hide" : "Show"}
+                </button>
+              </div>
             </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label
-              htmlFor="newPassword"
-              className="text-[13px] font-medium text-[#3D3D3D]"
-            >
-              New Password
-            </Label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#ADADAD]" />
-              <Input
-                id="newPassword"
-                name="newPassword"
-                type={showNewPw ? "text" : "password"}
-                minLength={6}
-                required
-                className={cn(inputCls, "pl-9 pr-10")}
-              />
-              <button
-                type="button"
-                onClick={() => setShowNewPw(!showNewPw)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#ADADAD] hover:text-[#3D3D3D] transition-colors text-xs"
+            <div className="space-y-1.5">
+              <Label
+                htmlFor="newPassword"
+                className="text-[13px] font-medium text-[#3D3D3D]"
               >
-                {showNewPw ? "Hide" : "Show"}
-              </button>
+                New Password
+              </Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#ADADAD]" />
+                <Input
+                  id="newPassword"
+                  name="newPassword"
+                  type={showNewPw ? "text" : "password"}
+                  minLength={6}
+                  required
+                  className={cn(inputCls, "pl-9 pr-10")}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNewPw(!showNewPw)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#ADADAD] hover:text-[#3D3D3D] transition-colors text-xs"
+                >
+                  {showNewPw ? "Hide" : "Show"}
+                </button>
+              </div>
             </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label
-              htmlFor="confirmPassword"
-              className="text-[13px] font-medium text-[#3D3D3D]"
-            >
-              Confirm New Password
-            </Label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#ADADAD]" />
-              <Input
-                id="confirmPassword"
-                name="confirmPassword"
-                type="password"
-                required
-                className={cn(inputCls, "pl-9")}
-              />
+            <div className="space-y-1.5">
+              <Label
+                htmlFor="confirmPassword"
+                className="text-[13px] font-medium text-[#3D3D3D]"
+              >
+                Confirm New Password
+              </Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#ADADAD]" />
+                <Input
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  type="password"
+                  required
+                  className={cn(inputCls, "pl-9")}
+                />
+              </div>
             </div>
+            <div className="pt-2 flex justify-end">
+              <SaveButton label="Send Verification Code" />
+            </div>
+          </form>
+        ) : (
+          /* ── Step 2: Enter OTP ── */
+          <div className="p-6 space-y-5">
+            {/* Email hint */}
+            <div className="flex items-start gap-3 rounded-xl bg-blue-50 border border-blue-100 px-4 py-3">
+              <Mail className="h-4 w-4 text-blue-500 mt-0.5 shrink-0" />
+              <p className="text-[13px] text-blue-700">
+                A 6-digit verification code was sent to{" "}
+                <strong>
+                  {requestState.status === "otp_sent"
+                    ? requestState.email
+                    : "your email"}
+                </strong>
+                . It expires in 10 minutes.
+              </p>
+            </div>
+
+            <form action={verifyAction} className="space-y-4">
+              {verifyState.status === "error" && (
+                <div className="flex items-start gap-2.5 rounded-xl bg-red-50 border border-red-100 px-4 py-3">
+                  <AlertCircle className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
+                  <p className="text-[13px] text-red-700">
+                    {verifyState.message}
+                  </p>
+                </div>
+              )}
+              <div className="space-y-1.5">
+                <Label
+                  htmlFor="otp"
+                  className="text-[13px] font-medium text-[#3D3D3D]"
+                >
+                  Verification Code
+                </Label>
+                <Input
+                  id="otp"
+                  name="otp"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]{6}"
+                  maxLength={6}
+                  placeholder="123456"
+                  autoFocus
+                  required
+                  className={cn(
+                    inputCls,
+                    "text-center text-2xl font-bold tracking-[0.4em] placeholder:tracking-normal placeholder:text-lg"
+                  )}
+                />
+              </div>
+              <div className="pt-2 flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() =>
+                    // reset by submitting a blank form to requestAction (triggers re-request)
+                    // simplest: reload the page state via action
+                    window.location.reload()
+                  }
+                  className="flex items-center gap-1.5 text-[13px] text-[#ADADAD] hover:text-[#3D3D3D] transition-colors"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  Start over
+                </button>
+                <SaveButton label="Verify & Change Password" />
+              </div>
+            </form>
           </div>
-          <div className="pt-2 flex justify-end">
-            <SaveButton label="Change Password" />
-          </div>
-        </form>
+        )}
       </div>
     </div>
   );

@@ -255,6 +255,45 @@ export function welcomeEmailTemplate(params: { customerName: string }): string {
 }
 
 /**
+ * Password change OTP email template
+ */
+export function passwordChangeOTPTemplate(params: {
+  customerName: string;
+  otp: string;
+  expiresInMinutes: number;
+}): string {
+  const content = `
+    <div style="text-align: center; margin-bottom: 30px;">
+      <div style="display: inline-block; background-color: #0A0A0A; color: white; width: 60px; height: 60px; border-radius: 50%; line-height: 60px; font-size: 26px;">🔒</div>
+    </div>
+
+    <h2 style="color: #111827; margin: 0 0 20px 0; text-align: center;">Password Change Request</h2>
+    <p style="color: #4b5563; margin: 0 0 20px 0; line-height: 1.6;">Hi ${params.customerName},</p>
+    <p style="color: #4b5563; margin: 0 0 30px 0; line-height: 1.6;">
+      We received a request to change your account password. Use the verification code below to confirm this action.
+    </p>
+
+    <div style="background-color: #f9fafb; border: 2px dashed #d1d5db; border-radius: 12px; padding: 30px; text-align: center; margin: 30px 0;">
+      <p style="margin: 0 0 8px 0; color: #6b7280; font-size: 13px; text-transform: uppercase; letter-spacing: 1px;">Your OTP Code</p>
+      <p style="margin: 0; font-size: 42px; font-weight: 800; color: #0A0A0A; letter-spacing: 10px;">${params.otp}</p>
+      <p style="margin: 12px 0 0 0; color: #9ca3af; font-size: 13px;">Expires in ${params.expiresInMinutes} minutes</p>
+    </div>
+
+    <div style="background-color: #fef2f2; border-left: 4px solid #ef4444; padding: 16px 20px; border-radius: 4px; margin: 20px 0;">
+      <p style="margin: 0; color: #7f1d1d; font-size: 13px; line-height: 1.6;">
+        <strong>Security Notice:</strong> If you did not request a password change, please ignore this email. Your password will remain unchanged.
+      </p>
+    </div>
+
+    <p style="color: #6b7280; margin: 20px 0 0 0; font-size: 13px; line-height: 1.6;">
+      Never share this code with anyone, including our support team.
+    </p>
+  `;
+
+  return emailWrapper(content);
+}
+
+/**
  * Age verification result email template
  */
 export function ageVerificationResultTemplate(params: {

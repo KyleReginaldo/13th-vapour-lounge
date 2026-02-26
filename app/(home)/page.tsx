@@ -20,16 +20,23 @@ import Image from "next/image";
 import Link from "next/link";
 
 export default async function HomePage() {
-  const [productsData, user] = await Promise.all([
-    getProducts(1, 48),
-    getCurrentUser().catch(() => null),
-  ]);
+  let productsData, user, unreviewedOrders;
+  try {
+    [productsData, user] = await Promise.all([
+      getProducts(1, 48),
+      getCurrentUser().catch(() => null),
+    ]);
+    unreviewedOrders = user
+      ? ((await getUnreviewedOrders().catch(() => ({ data: [] }))).data ?? [])
+      : [];
+  } catch (err) {
+    console.error("[HomePage] Fatal render error:", err);
+    productsData = { products: [] };
+    user = null;
+    unreviewedOrders = [];
+  }
   const products = productsData?.products || [];
   const showVerificationBanner = !!user && !user.is_verified;
-
-  const unreviewedOrders = user
-    ? ((await getUnreviewedOrders().catch(() => ({ data: [] }))).data ?? [])
-    : [];
 
   return (
     <div className="bg-gray-50 min-h-screen">

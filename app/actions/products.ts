@@ -412,7 +412,12 @@ export async function getProducts(page = 1, pageSize = 20, category?: string) {
     };
   } catch (err) {
     console.error("[getProducts] Caught error:", err);
-    throw err;
+    return {
+      products: [],
+      totalCount: 0,
+      currentPage: page,
+      totalPages: 0,
+    };
   }
 }
 

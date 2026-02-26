@@ -1,5 +1,6 @@
 "use client";
 
+import { uploadReviewImage } from "@/app/actions/images";
 import { submitProductReview } from "@/app/actions/reviews";
 import { Button } from "@/components/ui/button";
 import {
@@ -8,8 +9,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { AlertCircle, CheckCircle2, Loader2, Star, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  ImagePlus,
+  Loader2,
+  Star,
+  X,
+} from "lucide-react";
+import Image from "next/image";
+import { useEffect, useRef, useState } from "react";
 
 type UnreviewedOrder = {
   orderId: string;
@@ -23,7 +32,27 @@ type UnreviewedOrder = {
 };
 
 const DISMISSED_KEY = "review_prompt_dismissed_at";
+const REVIEWED_KEY = "review_prompt_reviewed_keys"; // compound "productId:orderId"
 const DISMISS_HOURS = 24;
+const MAX_IMAGES = 3;
+
+function getReviewedKeys(): Set<string> {
+  try {
+    const raw = localStorage.getItem(REVIEWED_KEY);
+    if (!raw) return new Set();
+    return new Set(JSON.parse(raw) as string[]);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveReviewedKey(productId: string, orderId: string) {
+  try {
+    const existing = getReviewedKeys();
+    existing.add(`${productId}:${orderId}`);
+    localStorage.setItem(REVIEWED_KEY, JSON.stringify([...existing]));
+  } catch {}
+}
 
 function StarRating({
   value,
@@ -63,8 +92,6 @@ export function ReviewPromptDialog({
   unreviewedOrders: UnreviewedOrder[];
 }) {
   const [open, setOpen] = useState(false);
-  const [orderIdx, setOrderIdx] = useState(0);
-  const [itemIdx, setItemIdx] = useState(0);
   const [rating, setRating] = useState(0);
   const [title, setTitle] = useState("");
   const [comment, setComment] = useState("");
@@ -73,6 +100,11 @@ export function ReviewPromptDialog({
   const [success, setSuccess] = useState(false);
   const [skipped, setSkipped] = useState<Set<string>>(new Set());
 
+  // image upload state
+  const [imageUrls, setImageUrls] = useState<string[]>([]);
+  const [uploadingCount, setUploadingCount] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const allItems = unreviewedOrders.flatMap((o) =>
     o.items.map((item) => ({
       ...item,
@@ -80,11 +112,21 @@ export function ReviewPromptDialog({
       orderNumber: o.orderNumber,
     }))
   );
-  const pendingItems = allItems.filter((i) => !skipped.has(i.productId));
+  const pendingItems = allItems.filter(
+    (i) => !skipped.has(`${i.productId}:${i.orderId}`)
+  );
   const current = pendingItems[0] ?? null;
 
+  // Merge localStorage reviewed keys so already-reviewed order+product combos never re-show
   useEffect(() => {
-    if (!unreviewedOrders.length) return;
+    const reviewed = getReviewedKeys();
+    if (reviewed.size > 0) {
+      setSkipped((prev) => new Set([...prev, ...reviewed]));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!pendingItems.length) return;
     // Show at most once per DISMISS_HOURS
     const ts = localStorage.getItem(DISMISSED_KEY);
     if (ts) {
@@ -94,7 +136,8 @@ export function ReviewPromptDialog({
     // Small delay so it doesn't pop instantly on page load
     const t = setTimeout(() => setOpen(true), 1500);
     return () => clearTimeout(t);
-  }, [unreviewedOrders.length]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingItems.length]);
 
   const dismiss = () => {
     localStorage.setItem(DISMISSED_KEY, String(Date.now()));
@@ -107,15 +150,48 @@ export function ReviewPromptDialog({
     setComment("");
     setError(null);
     setSuccess(false);
+    setImageUrls([]);
+  };
+
+  // ── Image upload ─────────────────────────────────────────────────────────
+
+  const handleImagePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    e.target.value = "";
+
+    const remaining = MAX_IMAGES - imageUrls.length;
+    const batch = files.slice(0, remaining);
+    setUploadingCount((c) => c + batch.length);
+
+    const results = await Promise.all(
+      batch.map(async (file) => {
+        const res = await uploadReviewImage(file);
+        return res.success && res.data ? res.data.url : null;
+      })
+    );
+
+    setUploadingCount((c) => c - batch.length);
+    const uploaded = results.filter(Boolean) as string[];
+    if (uploaded.length) {
+      setImageUrls((prev) => [...prev, ...uploaded].slice(0, MAX_IMAGES));
+    }
+    const failed = batch.length - uploaded.length;
+    if (failed > 0) {
+      setError(`${failed} image(s) failed to upload. Please try again.`);
+    }
+  };
+
+  const removeImage = (url: string) => {
+    setImageUrls((prev) => prev.filter((u) => u !== url));
   };
 
   const handleSkip = () => {
     if (!current) return;
-    const next = skipped;
-    next.add(current.productId);
-    setSkipped(new Set(next));
+    const next = new Set(skipped);
+    next.add(`${current.productId}:${current.orderId}`);
+    setSkipped(next);
     reset();
-    // Close without 24h suppress when all items handled
     if (pendingItems.length <= 1) setOpen(false);
   };
 
@@ -133,6 +209,10 @@ export function ReviewPromptDialog({
       setError("Review must be at least 10 characters.");
       return;
     }
+    if (uploadingCount > 0) {
+      setError("Please wait for images to finish uploading.");
+      return;
+    }
 
     setSubmitting(true);
     setError(null);
@@ -147,6 +227,7 @@ export function ReviewPromptDialog({
       rating,
       title: title.trim(),
       comment: comment.trim(),
+      images: imageUrls.length ? imageUrls : undefined,
     });
 
     setSubmitting(false);
@@ -156,13 +237,15 @@ export function ReviewPromptDialog({
       return;
     }
 
+    // Persist to localStorage so re-renders never re-show this order+product combo
+    saveReviewedKey(current.productId, current.orderId);
+
     setSuccess(true);
     setTimeout(() => {
       const next = new Set(skipped);
-      next.add(current.productId);
+      next.add(`${current.productId}:${current.orderId}`);
       setSkipped(next);
       reset();
-      // Close without 24h suppress — show again next visit if more items
       if (pendingItems.length <= 1) setOpen(false);
     }, 1400);
   };
@@ -170,6 +253,7 @@ export function ReviewPromptDialog({
   if (!current) return null;
 
   const remaining = pendingItems.length;
+  const canAddMore = imageUrls.length < MAX_IMAGES;
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && dismiss()}>
@@ -216,17 +300,82 @@ export function ReviewPromptDialog({
               <CheckCircle2 className="h-10 w-10 text-green-500" />
               <p className="font-semibold text-[#0F0F0F]">Review submitted!</p>
               <p className="text-[13px] text-[#ADADAD]">
-                It will be visible after moderation.
+                Your review is now live on the product page.
               </p>
             </div>
           ) : (
             <>
-              {/* Stars */}
-              <div className="space-y-1.5">
-                <p className="text-[13px] font-medium text-[#3D3D3D]">
-                  Your rating
-                </p>
-                <StarRating value={rating} onChange={setRating} />
+              {/* Stars + Photos row */}
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-1.5">
+                  <p className="text-[13px] font-medium text-[#3D3D3D]">
+                    Your rating
+                  </p>
+                  <StarRating value={rating} onChange={setRating} />
+                </div>
+
+                {/* Photos inline */}
+                <div className="space-y-1.5">
+                  <p className="text-[13px] font-medium text-[#3D3D3D]">
+                    Photos{" "}
+                    <span className="font-normal text-[#ADADAD] text-[11px]">
+                      (up to {MAX_IMAGES})
+                    </span>
+                  </p>
+                  <div className="flex gap-1.5">
+                    {imageUrls.map((url) => (
+                      <div
+                        key={url}
+                        className="relative w-14 h-14 rounded-lg overflow-hidden border border-[#E8E8E8] group shrink-0"
+                      >
+                        <Image
+                          src={url}
+                          alt="Review photo"
+                          fill
+                          className="object-cover"
+                          sizes="56px"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeImage(url)}
+                          className="absolute top-0.5 right-0.5 h-4 w-4 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="h-2.5 w-2.5" />
+                        </button>
+                      </div>
+                    ))}
+
+                    {Array.from({ length: uploadingCount }).map((_, i) => (
+                      <div
+                        key={`uploading-${i}`}
+                        className="w-14 h-14 rounded-lg border border-dashed border-[#E8E8E8] bg-[#FAFAFA] flex items-center justify-center shrink-0"
+                      >
+                        <Loader2 className="h-4 w-4 animate-spin text-[#ADADAD]" />
+                      </div>
+                    ))}
+
+                    {canAddMore && (
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploadingCount > 0}
+                        className="w-14 h-14 rounded-lg border border-dashed border-[#E8E8E8] bg-[#FAFAFA] hover:bg-[#F0F0F0] disabled:opacity-50 transition-colors flex flex-col items-center justify-center gap-0.5 text-[#ADADAD] hover:text-[#6B6B6B] shrink-0"
+                      >
+                        <ImagePlus className="h-4 w-4" />
+                        <span className="text-[10px]">Add</span>
+                      </button>
+                    )}
+                  </div>
+
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    multiple
+                    className="hidden"
+                    onChange={handleImagePick}
+                  />
+                </div>
               </div>
 
               {/* Title */}
@@ -252,7 +401,7 @@ export function ReviewPromptDialog({
                   value={comment}
                   onChange={(e) => setComment(e.target.value)}
                   placeholder="Tell others what you think about this product..."
-                  rows={3}
+                  rows={2}
                   maxLength={2000}
                   className="w-full px-3 py-2.5 text-[13px] rounded-xl border-[1.5px] border-[#E8E8E8] bg-white placeholder:text-[#CDCDCD] outline-none focus:border-[#0A0A0A] focus:shadow-[0_0_0_3px_rgba(10,10,10,0.06)] transition-all resize-none"
                 />
@@ -270,7 +419,7 @@ export function ReviewPromptDialog({
 
         {/* Footer */}
         {!success && (
-          <div className="px-6 pb-5 flex items-center gap-2">
+          <div className="px-6 pb-5 pt-4 flex items-center gap-2 border-t border-[#F5F5F5]">
             <button
               onClick={handleSkip}
               className="flex-1 h-10 rounded-xl border border-[#E8E8E8] text-[13px] font-medium text-[#6B6B6B] hover:bg-[#F5F5F5] transition-colors"
@@ -279,7 +428,7 @@ export function ReviewPromptDialog({
             </button>
             <Button
               onClick={handleSubmit}
-              disabled={submitting}
+              disabled={submitting || uploadingCount > 0}
               className="flex-1 h-10 rounded-xl bg-[#0A0A0A] hover:bg-[#1A1A1A] text-white text-[13px] font-semibold disabled:opacity-60"
             >
               {submitting ? (

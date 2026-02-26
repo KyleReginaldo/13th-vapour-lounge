@@ -1,9 +1,11 @@
 import { getProductBySlug, getRelatedProducts } from "@/app/actions/products";
+import { getProductReviews } from "@/app/actions/reviews";
 import { Breadcrumb } from "@/components/layout/Breadcrumb";
 import { Container } from "@/components/layout/Container";
 import { ProductGallery } from "@/components/product/ProductGallery";
 import { ProductGrid } from "@/components/product/ProductGrid";
 import { ProductInfo } from "@/components/product/ProductInfo";
+import { ProductReviewsSection } from "@/components/product/ProductReviewsSection";
 import { Skeleton } from "@/components/ui/skeleton";
 import { createClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
@@ -67,6 +69,13 @@ export default async function ProductPage({ params }: ProductPageProps) {
     data: { user },
   } = await supabase.auth.getUser();
   const isLoggedIn = !!user;
+
+  // Fetch reviews server-side
+  const reviewsResult = await getProductReviews(product.id, 1, 10);
+  const reviewsData = reviewsResult.data;
+  const initialReviews = (reviewsData?.data ?? []) as any[];
+  const initialTotal: number = (reviewsData as any)?.totalReviews ?? 0;
+  const averageRating: number = (reviewsData as any)?.averageRating ?? 0;
 
   return (
     <Container className="py-8">
@@ -246,14 +255,15 @@ export default async function ProductPage({ params }: ProductPageProps) {
         </div>
       )}
 
-      {/* Reviews Section Placeholder */}
+      {/* Reviews Section */}
       <div id="reviews" className="mt-12 space-y-6">
         <h2 className="text-2xl font-bold">Customer Reviews</h2>
-        <div className="rounded-lg border p-12 text-center">
-          <p className="text-muted-foreground">
-            Reviews coming soon. Check back later!
-          </p>
-        </div>
+        <ProductReviewsSection
+          productId={product.id}
+          initialReviews={initialReviews}
+          initialTotal={initialTotal}
+          averageRating={averageRating}
+        />
       </div>
     </Container>
   );

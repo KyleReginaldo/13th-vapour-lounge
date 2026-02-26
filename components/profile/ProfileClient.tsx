@@ -4,6 +4,7 @@ import {
   getMyVerificationStatus,
   submitAgeVerification,
 } from "@/app/actions/age-verification";
+import { uploadReviewImage } from "@/app/actions/images";
 import {
   reorderItems,
   requestPasswordChangeOTP,
@@ -14,6 +15,12 @@ import {
 } from "@/app/actions/profile";
 import { submitProductReview } from "@/app/actions/reviews";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -33,6 +40,7 @@ import {
   Clock,
   CreditCard,
   FileText,
+  ImagePlus,
   KeyRound,
   Loader2,
   Lock,
@@ -48,6 +56,7 @@ import {
   Upload,
   User,
   UserCircle,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -210,6 +219,308 @@ function OverviewTab({ user }: { user: UserWithRole }) {
   );
 }
 
+// ── Review Modal ──────────────────────────────────────────────────────────────
+
+const MAX_REVIEW_IMAGES = 3;
+
+function ReviewModal({
+  open,
+  productName,
+  productId,
+  orderId,
+  onClose,
+  onReviewed,
+}: {
+  open: boolean;
+  productName: string;
+  productId: string;
+  orderId: string;
+  onClose: () => void;
+  onReviewed: (productId: string) => void;
+}) {
+  const [rating, setRating] = useState(0);
+  const [hoveredStar, setHoveredStar] = useState(0);
+  const [title, setTitle] = useState("");
+  const [comment, setComment] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+  const [imageUrls, setImageUrls] = useState<string[]>([]);
+  const [uploadingCount, setUploadingCount] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const reset = () => {
+    setRating(0);
+    setHoveredStar(0);
+    setTitle("");
+    setComment("");
+    setError(null);
+    setSuccess(false);
+    setImageUrls([]);
+    setUploadingCount(0);
+  };
+
+  const handleClose = () => {
+    reset();
+    onClose();
+  };
+
+  const handleImagePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    e.target.value = "";
+    const remaining = MAX_REVIEW_IMAGES - imageUrls.length;
+    const batch = files.slice(0, remaining);
+    setUploadingCount((c) => c + batch.length);
+    const results = await Promise.all(
+      batch.map(async (file) => {
+        const res = await uploadReviewImage(file);
+        return res.success && res.data ? res.data.url : null;
+      })
+    );
+    setUploadingCount((c) => c - batch.length);
+    const uploaded = results.filter(Boolean) as string[];
+    if (uploaded.length)
+      setImageUrls((prev) =>
+        [...prev, ...uploaded].slice(0, MAX_REVIEW_IMAGES)
+      );
+    if (uploaded.length < batch.length)
+      setError("Some images failed to upload. Please try again.");
+  };
+
+  const handleSubmit = async () => {
+    if (rating === 0) {
+      setError("Please select a rating.");
+      return;
+    }
+    if (title.trim().length < 3) {
+      setError("Title is too short.");
+      return;
+    }
+    if (comment.trim().length < 10) {
+      setError("Review is too short.");
+      return;
+    }
+    if (uploadingCount > 0) {
+      setError("Please wait for images to finish uploading.");
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    const result = await submitProductReview({
+      productId,
+      orderId,
+      rating,
+      title: title.trim(),
+      comment: comment.trim(),
+      images: imageUrls.length ? imageUrls : undefined,
+    });
+    setSubmitting(false);
+    if (!result.success) {
+      setError(result.message ?? "Failed to submit.");
+      return;
+    }
+    setSuccess(true);
+    setTimeout(() => {
+      onReviewed(productId);
+      handleClose();
+    }, 1400);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
+      <DialogContent
+        showCloseButton={false}
+        className="max-w-sm p-0 gap-0 overflow-hidden rounded-2xl border border-[#EBEBEB]"
+      >
+        {/* Header */}
+        <DialogHeader className="px-5 pt-5 pb-4 border-b border-[#F5F5F5]">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <DialogTitle className="text-[15px] font-semibold text-[#0F0F0F]">
+                Write a Review
+              </DialogTitle>
+              <p className="text-[12px] text-[#ADADAD] mt-0.5 line-clamp-1">
+                {productName}
+              </p>
+            </div>
+            <button
+              onClick={handleClose}
+              className="rounded-lg p-1 hover:bg-[#F5F5F5] transition-colors text-[#ADADAD] hover:text-[#3D3D3D] shrink-0"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </DialogHeader>
+
+        {/* Body */}
+        <div className="px-5 py-4 space-y-4">
+          {success ? (
+            <div className="flex flex-col items-center gap-2 py-6 text-center">
+              <CheckCircle2 className="h-10 w-10 text-green-500" />
+              <p className="font-semibold text-[#0F0F0F]">Review submitted!</p>
+              <p className="text-[13px] text-[#ADADAD]">
+                It will be visible after moderation.
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* Stars + Photos row */}
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-1.5">
+                  <p className="text-[12px] font-medium text-[#3D3D3D]">
+                    Your rating
+                  </p>
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        type="button"
+                        onMouseEnter={() => setHoveredStar(star)}
+                        onMouseLeave={() => setHoveredStar(0)}
+                        onClick={() => setRating(star)}
+                        className="transition-transform hover:scale-110"
+                      >
+                        <Star
+                          className={`h-7 w-7 ${
+                            star <= (hoveredStar || rating)
+                              ? "fill-amber-400 text-amber-400"
+                              : "text-[#E0E0E0]"
+                          }`}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Photo upload */}
+                <div className="space-y-1.5">
+                  <p className="text-[12px] font-medium text-[#3D3D3D]">
+                    Photos{" "}
+                    <span className="font-normal text-[#ADADAD] text-[11px]">
+                      (up to {MAX_REVIEW_IMAGES})
+                    </span>
+                  </p>
+                  <div className="flex gap-1.5">
+                    {imageUrls.map((url) => (
+                      <div
+                        key={url}
+                        className="relative w-14 h-14 rounded-lg overflow-hidden border border-[#E8E8E8] group shrink-0"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={url}
+                          alt="review"
+                          className="w-full h-full object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setImageUrls((p) => p.filter((u) => u !== url))
+                          }
+                          className="absolute top-0.5 right-0.5 h-4 w-4 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="h-2.5 w-2.5" />
+                        </button>
+                      </div>
+                    ))}
+                    {Array.from({ length: uploadingCount }).map((_, i) => (
+                      <div
+                        key={i}
+                        className="w-14 h-14 rounded-lg border border-dashed border-[#E8E8E8] bg-[#FAFAFA] flex items-center justify-center shrink-0"
+                      >
+                        <Loader2 className="h-4 w-4 animate-spin text-[#ADADAD]" />
+                      </div>
+                    ))}
+                    {imageUrls.length < MAX_REVIEW_IMAGES && (
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploadingCount > 0}
+                        className="w-14 h-14 rounded-lg border border-dashed border-[#E8E8E8] bg-[#FAFAFA] hover:bg-[#F0F0F0] disabled:opacity-50 transition-colors flex flex-col items-center justify-center gap-0.5 text-[#ADADAD] hover:text-[#6B6B6B] shrink-0"
+                      >
+                        <ImagePlus className="h-4 w-4" />
+                        <span className="text-[10px]">Add</span>
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    multiple
+                    className="hidden"
+                    onChange={handleImagePick}
+                  />
+                </div>
+              </div>
+
+              {/* Title */}
+              <div className="space-y-1.5">
+                <label className="text-[12px] font-medium text-[#3D3D3D]">
+                  Title
+                </label>
+                <input
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="e.g. Great product!"
+                  maxLength={200}
+                  className="w-full h-9 px-3 text-[12px] rounded-xl border-[1.5px] border-[#E8E8E8] bg-white placeholder:text-[#CDCDCD] outline-none focus:border-[#0A0A0A] focus:shadow-[0_0_0_3px_rgba(10,10,10,0.06)] transition-all"
+                />
+              </div>
+
+              {/* Comment */}
+              <div className="space-y-1.5">
+                <label className="text-[12px] font-medium text-[#3D3D3D]">
+                  Review
+                </label>
+                <textarea
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  placeholder="Share your experience with this product..."
+                  rows={2}
+                  maxLength={2000}
+                  className="w-full px-3 py-2 text-[12px] rounded-xl border-[1.5px] border-[#E8E8E8] bg-white placeholder:text-[#CDCDCD] outline-none focus:border-[#0A0A0A] focus:shadow-[0_0_0_3px_rgba(10,10,10,0.06)] transition-all resize-none"
+                />
+              </div>
+
+              {error && (
+                <div className="flex items-start gap-2 rounded-xl bg-red-50 border border-red-100 px-3 py-2">
+                  <AlertCircle className="h-3.5 w-3.5 text-red-500 mt-0.5 shrink-0" />
+                  <p className="text-[12px] text-red-700">{error}</p>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        {!success && (
+          <div className="px-5 pb-5 pt-0 flex gap-2">
+            <button
+              onClick={handleClose}
+              className="flex-1 h-9 rounded-xl border border-[#E8E8E8] text-[12px] font-medium text-[#6B6B6B] hover:bg-[#F5F5F5] transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={submitting || uploadingCount > 0}
+              className="flex-1 h-9 rounded-xl bg-[#0A0A0A] hover:bg-[#1A1A1A] text-white text-[12px] font-semibold disabled:opacity-60 transition-colors flex items-center justify-center gap-1.5"
+            >
+              {submitting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                "Submit Review"
+              )}
+            </button>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Order Detail Sheet ───────────────────────────────────────────────────────
 
 function OrderDetailSheet({
@@ -225,63 +536,19 @@ function OrderDetailSheet({
   onReorder: (id: string) => void;
   reorderingId: string | null;
 }) {
-  const [reviewingProductId, setReviewingProductId] = useState<string | null>(
-    null
-  );
-  const [reviewRating, setReviewRating] = useState(0);
-  const [reviewTitle, setReviewTitle] = useState("");
-  const [reviewComment, setReviewComment] = useState("");
-  const [reviewSubmitting, setReviewSubmitting] = useState(false);
-  const [reviewError, setReviewError] = useState<string | null>(null);
-  const [reviewSuccess, setReviewSuccess] = useState(false);
+  const [reviewingProduct, setReviewingProduct] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
   const [reviewedIds, setReviewedIds] = useState<Set<string>>(new Set());
 
-  const [hoveredStar, setHoveredStar] = useState(0);
-
-  const resetReview = () => {
-    setReviewRating(0);
-    setReviewTitle("");
-    setReviewComment("");
-    setReviewError(null);
-    setReviewSuccess(false);
-    setHoveredStar(0);
-  };
-
-  const handleReviewSubmit = async () => {
-    if (!order || !reviewingProductId) return;
-    if (reviewRating === 0) {
-      setReviewError("Please select a rating.");
-      return;
-    }
-    if (reviewTitle.trim().length < 3) {
-      setReviewError("Title is too short.");
-      return;
-    }
-    if (reviewComment.trim().length < 10) {
-      setReviewError("Review is too short.");
-      return;
-    }
-    setReviewSubmitting(true);
-    setReviewError(null);
-    const result = await submitProductReview({
-      productId: reviewingProductId,
-      orderId: order.id,
-      rating: reviewRating,
-      title: reviewTitle.trim(),
-      comment: reviewComment.trim(),
-    });
-    setReviewSubmitting(false);
-    if (!result.success) {
-      setReviewError(result.message ?? "Failed to submit.");
-      return;
-    }
-    setReviewSuccess(true);
-    setTimeout(() => {
-      setReviewedIds((s) => new Set([...s, reviewingProductId]));
-      setReviewingProductId(null);
-      resetReview();
-    }, 1200);
-  };
+  // Pre-populate from localStorage (same key as ReviewPromptDialog)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("review_prompt_reviewed_keys");
+      if (raw) setReviewedIds(new Set(JSON.parse(raw) as string[]));
+    } catch {}
+  }, []);
 
   if (!order) return null;
 
@@ -293,6 +560,30 @@ function OrderDetailSheet({
         side="right"
         className="w-full sm:max-w-md flex flex-col gap-0 p-0 overflow-hidden"
       >
+        {/* Review Modal */}
+        {reviewingProduct && (
+          <ReviewModal
+            open
+            productName={reviewingProduct.name}
+            productId={reviewingProduct.id}
+            orderId={order.id}
+            onClose={() => setReviewingProduct(null)}
+            onReviewed={(id) => {
+              const key = `${id}:${order.id}`;
+              setReviewedIds((s) => new Set([...s, key]));
+              try {
+                const raw = localStorage.getItem("review_prompt_reviewed_keys");
+                const existing: string[] = raw ? JSON.parse(raw) : [];
+                if (!existing.includes(key)) existing.push(key);
+                localStorage.setItem(
+                  "review_prompt_reviewed_keys",
+                  JSON.stringify(existing)
+                );
+              } catch {}
+              setReviewingProduct(null);
+            }}
+          />
+        )}
         {/* Header */}
         <SheetHeader className="px-5 pt-5 pb-4 border-b border-[#F0F0F0]">
           <div className="flex items-start justify-between gap-3">
@@ -365,100 +656,29 @@ function OrderDetailSheet({
                       </p>
                       {canReview &&
                         item.product_id &&
-                        !reviewedIds.has(item.product_id) && (
+                        !reviewedIds.has(`${item.product_id}:${order.id}`) && (
                           <button
-                            onClick={() => {
-                              resetReview();
-                              setReviewingProductId(
-                                reviewingProductId === item.product_id
-                                  ? null
-                                  : item.product_id
-                              );
-                            }}
+                            onClick={() =>
+                              setReviewingProduct({
+                                id: item.product_id!,
+                                name: item.product_name,
+                              })
+                            }
                             className="flex items-center gap-1 text-[11px] font-medium text-amber-500 hover:text-amber-600 transition-colors"
                           >
                             <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
-                            {reviewingProductId === item.product_id
-                              ? "Cancel"
-                              : "Review"}
+                            Review
                           </button>
                         )}
                       {canReview &&
                         item.product_id &&
-                        reviewedIds.has(item.product_id) && (
-                          <span className="flex items-center gap-1 text-[11px] text-green-600">
+                        reviewedIds.has(`${item.product_id}:${order.id}`) && (
+                          <span className="flex items-center gap-1 text-[11px] font-medium text-green-600">
                             <CheckCircle2 className="h-3 w-3" /> Reviewed
                           </span>
                         )}
                     </div>
                   </div>
-
-                  {/* Inline review form */}
-                  {reviewingProductId === item.product_id && (
-                    <div className="mt-3 pt-3 border-t border-[#EBEBEB] space-y-3">
-                      {reviewSuccess ? (
-                        <div className="flex items-center gap-2 text-green-600 text-[13px] font-medium">
-                          <CheckCircle2 className="h-4 w-4" /> Review submitted!
-                        </div>
-                      ) : (
-                        <>
-                          {/* Stars */}
-                          <div className="flex gap-1">
-                            {[1, 2, 3, 4, 5].map((star) => (
-                              <button
-                                key={star}
-                                type="button"
-                                onMouseEnter={() => setHoveredStar(star)}
-                                onMouseLeave={() => setHoveredStar(0)}
-                                onClick={() => setReviewRating(star)}
-                                className="transition-transform hover:scale-110"
-                              >
-                                <Star
-                                  className={`h-6 w-6 ${
-                                    star <= (hoveredStar || reviewRating)
-                                      ? "fill-amber-400 text-amber-400"
-                                      : "text-[#E0E0E0]"
-                                  }`}
-                                />
-                              </button>
-                            ))}
-                          </div>
-                          <input
-                            value={reviewTitle}
-                            onChange={(e) => setReviewTitle(e.target.value)}
-                            placeholder="Title (e.g. Great product!)"
-                            maxLength={200}
-                            className="w-full h-9 px-3 text-[12px] rounded-lg border border-[#E8E8E8] bg-white placeholder:text-[#CDCDCD] outline-none focus:border-[#0A0A0A] transition-all"
-                          />
-                          <textarea
-                            value={reviewComment}
-                            onChange={(e) => setReviewComment(e.target.value)}
-                            placeholder="Share your experience with this product..."
-                            rows={2}
-                            maxLength={2000}
-                            className="w-full px-3 py-2 text-[12px] rounded-lg border border-[#E8E8E8] bg-white placeholder:text-[#CDCDCD] outline-none focus:border-[#0A0A0A] transition-all resize-none"
-                          />
-                          {reviewError && (
-                            <p className="text-[12px] text-red-600 flex items-center gap-1">
-                              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                              {reviewError}
-                            </p>
-                          )}
-                          <button
-                            onClick={handleReviewSubmit}
-                            disabled={reviewSubmitting}
-                            className="w-full h-8 rounded-lg bg-[#0A0A0A] text-white text-[12px] font-semibold hover:bg-[#1A1A1A] disabled:opacity-60 transition-colors flex items-center justify-center gap-1.5"
-                          >
-                            {reviewSubmitting ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              "Submit Review"
-                            )}
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  )}
                 </div>
               ))}
             </div>

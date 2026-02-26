@@ -12,7 +12,7 @@ import {
 } from "@/lib/actions/utils";
 import { logAudit } from "@/lib/auth/audit";
 import { requireRole } from "@/lib/auth/roles";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { sanitizeHTML } from "@/lib/validations/sanitize";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -124,7 +124,7 @@ export const getProductReviews = withErrorHandling(
     page = 1,
     limit = 10
   ): Promise<ActionResponse<PaginatedResponse<any>>> => {
-    const supabase = await createClient();
+    const supabase = createServiceClient();
 
     const offset = (page - 1) * limit;
 
@@ -145,7 +145,6 @@ export const getProductReviews = withErrorHandling(
         { count: "exact" }
       )
       .eq("product_id", productId)
-      .eq("is_approved", true)
       .eq("is_hidden", false)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
@@ -159,7 +158,6 @@ export const getProductReviews = withErrorHandling(
       .from("product_reviews")
       .select("rating")
       .eq("product_id", productId)
-      .eq("is_approved", true)
       .eq("is_hidden", false);
 
     const avgRating =
@@ -463,6 +461,7 @@ export const getUnreviewedOrders = withErrorHandling(
     >
   > => {
     const supabase = await createClient();
+    const serviceSupabase = createServiceClient();
 
     const {
       data: { user },
@@ -483,19 +482,26 @@ export const getUnreviewedOrders = withErrorHandling(
 
     if (!orders || orders.length === 0) return success([]);
 
-    // Get products already reviewed by this user
-    const { data: reviewed } = await supabase
+    // Get already-reviewed (product_id, order_id) pairs for this user
+    const { data: reviewed } = await serviceSupabase
       .from("product_reviews")
-      .select("product_id")
+      .select("product_id, order_id")
       .eq("user_id", user.id);
 
-    const reviewedIds = new Set((reviewed || []).map((r) => r.product_id));
+    // Compound key: "<productId>:<orderId>"
+    const reviewedKeys = new Set(
+      (reviewed || [])
+        .filter((r) => r.product_id && r.order_id)
+        .map((r) => `${r.product_id}:${r.order_id}`)
+    );
 
     const result = orders
       .map((order: any) => {
         const unreviewedItems = (order.order_items || [])
           .filter(
-            (item: any) => item.product_id && !reviewedIds.has(item.product_id)
+            (item: any) =>
+              item.product_id &&
+              !reviewedKeys.has(`${item.product_id}:${order.id}`)
           )
           .map((item: any) => ({
             productId: item.product_id,
@@ -522,6 +528,7 @@ export const submitProductReview = withErrorHandling(
     rating: number;
     title: string;
     comment: string;
+    images?: string[];
   }): Promise<ActionResponse> => {
     const supabase = await createClient();
 
@@ -546,17 +553,18 @@ export const submitProductReview = withErrorHandling(
       );
     }
 
-    // Check for duplicate review
+    // Check for duplicate review for this specific order + product
     const { data: existing } = await supabase
       .from("product_reviews")
       .select("id")
       .eq("product_id", input.productId)
       .eq("user_id", user.id)
+      .eq("order_id", input.orderId)
       .maybeSingle();
 
     if (existing) {
       return error(
-        "You have already reviewed this product",
+        "You have already reviewed this product for this order",
         ErrorCode.CONFLICT
       );
     }
@@ -571,7 +579,8 @@ export const submitProductReview = withErrorHandling(
         title: input.title.trim(),
         review_text: input.comment.trim(),
         verified_purchase: true,
-        is_approved: false,
+        is_approved: true,
+        images: input.images?.length ? input.images : null,
       });
 
     if (insertError) {
@@ -582,9 +591,8 @@ export const submitProductReview = withErrorHandling(
     }
 
     revalidatePath("/profile");
-    return success(
-      null,
-      "Review submitted! It will be visible after moderation."
-    );
+    revalidatePath("/");
+    revalidatePath("/products", "layout");
+    return success(null, "Review submitted successfully!");
   }
 );

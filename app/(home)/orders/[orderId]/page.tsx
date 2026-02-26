@@ -64,8 +64,8 @@ const STEPS = [
   },
 ] as const;
 
-function getStepIndex(order: OrderTracking): number {
-  // returns index of the CURRENT active step (0-based)
+function getCompletedUpTo(order: OrderTracking): number {
+  // Returns index of the last COMPLETED step (all steps <= this index are filled black)
   const status = order.status ?? "";
   const paid =
     order.payment_status === "paid" ||
@@ -73,17 +73,17 @@ function getStepIndex(order: OrderTracking): number {
     ["processing", "shipped", "delivered", "completed"].includes(status);
 
   if (status === "delivered" || status === "completed") return 4; // all done
-  if (status === "shipped" || !!order.shipped_at) return 3; // shipped active
-  if (status === "processing") return paid ? 2 : 1;
-  if (paid) return 1; // pending but paid
-  return 0; // just placed
+  if (status === "shipped" || !!order.shipped_at) return 3; // shipped done, waiting for delivery
+  if (paid) return 1; // payment done, processing is next
+  return 0; // placed done, waiting for payment
 }
 
 type StepStatus = "done" | "active" | "pending";
 
-function stepStatus(stepIdx: number, currentIdx: number): StepStatus {
-  if (stepIdx < currentIdx) return "done";
-  if (stepIdx === currentIdx) return "active";
+function stepStatus(stepIdx: number, completedUpTo: number): StepStatus {
+  if (stepIdx <= completedUpTo) return "done";
+  if (stepIdx === completedUpTo + 1 && completedUpTo < STEPS.length - 1)
+    return "active"; // next waiting step
   return "pending";
 }
 
@@ -165,7 +165,7 @@ export default async function OrderTrackingPage({
   }
 
   const isCancelled = order.status === "cancelled";
-  const currentIdx = isCancelled ? -1 : getStepIndex(order);
+  const currentIdx = isCancelled ? -1 : getCompletedUpTo(order);
 
   const stepTimestamps: Record<string, string | null> = {
     placed: order.created_at,
@@ -259,10 +259,7 @@ export default async function OrderTrackingPage({
               )}
 
               {STEPS.map((step, idx) => {
-                const state: StepStatus =
-                  currentIdx >= STEPS.length
-                    ? "done"
-                    : stepStatus(idx, currentIdx);
+                const state: StepStatus = stepStatus(idx, currentIdx);
                 const ts = stepTimestamps[step.key];
                 return (
                   <div
@@ -318,10 +315,7 @@ export default async function OrderTrackingPage({
             {/* Mobile: vertical timeline */}
             <div className="sm:hidden space-y-0">
               {STEPS.map((step, idx) => {
-                const state: StepStatus =
-                  currentIdx >= STEPS.length
-                    ? "done"
-                    : stepStatus(idx, currentIdx);
+                const state: StepStatus = stepStatus(idx, currentIdx);
                 const ts = stepTimestamps[step.key];
                 const isLast = idx === STEPS.length - 1;
                 return (

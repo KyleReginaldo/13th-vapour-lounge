@@ -28,7 +28,7 @@ export default async function HomePage() {
   const showVerificationBanner = !!user && !user.is_verified;
 
   const unreviewedOrders = user
-    ? ((await getUnreviewedOrders()).data ?? [])
+    ? ((await getUnreviewedOrders().catch(() => ({ data: [] }))).data ?? [])
     : [];
 
   return (

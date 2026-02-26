@@ -1,6 +1,7 @@
 "use client";
 
 import { useCart } from "@/lib/queries/cart";
+import { useGuestCart } from "@/lib/stores/guest-cart-store";
 import { cn } from "@/lib/utils";
 
 interface CartBadgeProps {
@@ -9,7 +10,13 @@ interface CartBadgeProps {
 
 export const CartBadge = ({ className }: CartBadgeProps) => {
   const { data: cart } = useCart();
-  const itemCount = cart?.summary?.itemCount || 0;
+  const guestItems = useGuestCart((s) => s.items);
+
+  // cart === null means unauthenticated; cart === undefined means loading
+  const itemCount =
+    cart === null
+      ? guestItems.reduce((sum, i) => sum + i.quantity, 0)
+      : (cart?.summary?.itemCount ?? 0);
 
   if (itemCount === 0) return null;
 

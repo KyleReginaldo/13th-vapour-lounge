@@ -39,12 +39,15 @@ export default async function proxy(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/products") ||
     request.nextUrl.pathname.startsWith("/sign-in") ||
     request.nextUrl.pathname.startsWith("/sign-up") ||
+    request.nextUrl.pathname.startsWith("/forgot-password") ||
     request.nextUrl.pathname.startsWith("/auth/sign") ||
     request.nextUrl.pathname.startsWith("/_next") ||
     request.nextUrl.pathname.startsWith("/api") ||
     request.nextUrl.pathname.startsWith("/seed") ||
     request.nextUrl.pathname.startsWith("/promote-admin") ||
-    request.nextUrl.pathname.startsWith("/unauthorized");
+    request.nextUrl.pathname.startsWith("/unauthorized") ||
+    request.nextUrl.pathname.startsWith("/orders") ||
+    request.nextUrl.pathname.startsWith("/contact");
 
   // Redirect to sign-in if not authenticated and trying to access protected route
   if (!user && !isPublicRoute) {

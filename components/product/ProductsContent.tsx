@@ -186,7 +186,7 @@ export function ProductsContent({ categories, brands }: ProductsContentProps) {
             brands={brands}
             filters={filters}
             onFiltersChange={handleFiltersChange}
-            priceRange={[0, 1000]}
+            priceRange={[200, 3000]}
           />
           <SortDropdown value={sortBy} onChange={setSortBy} />
         </div>
@@ -200,7 +200,7 @@ export function ProductsContent({ categories, brands }: ProductsContentProps) {
               brands={brands}
               filters={filters}
               onFiltersChange={handleFiltersChange}
-              priceRange={[0, 1000]}
+              priceRange={[200, 3000]}
             />
           </div>
 

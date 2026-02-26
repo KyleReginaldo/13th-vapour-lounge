@@ -1,3 +1,4 @@
+import { LegalModal } from "@/components/shared/LegalModal";
 import { Facebook } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -16,6 +17,7 @@ const Footer = () => {
                 alt="13th Vapour Lounge Logo"
                 width={64}
                 height={64}
+                className="rounded-md"
               />{" "}
             </h3>
             <p className="text-sm text-muted-foreground mb-4">
@@ -114,7 +116,7 @@ const Footer = () => {
               </li>
               <li>
                 <Link
-                  href="/orders"
+                  href="/profile?tab=orders"
                   className="hover:text-foreground transition-colors"
                 >
                   Order Tracking
@@ -122,7 +124,7 @@ const Footer = () => {
               </li>
               <li>
                 <Link
-                  href="/age-verification"
+                  href="/profile?tab=settings"
                   className="hover:text-foreground transition-colors"
                 >
                   Age Verification
@@ -144,29 +146,33 @@ const Footer = () => {
             <h4 className="font-semibold mb-4">Legal</h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li>
-                <Link
-                  href="/terms"
-                  className="hover:text-foreground transition-colors"
-                >
-                  Terms of Service
-                </Link>
+                <LegalModal
+                  type="terms"
+                  trigger={
+                    <span className="hover:text-foreground transition-colors cursor-pointer">
+                      Terms of Service
+                    </span>
+                  }
+                />
               </li>
               <li>
-                <Link
-                  href="/privacy"
-                  className="hover:text-foreground transition-colors"
-                >
-                  Privacy Policy
-                </Link>
+                <LegalModal
+                  type="privacy"
+                  trigger={
+                    <span className="hover:text-foreground transition-colors cursor-pointer">
+                      Privacy Policy
+                    </span>
+                  }
+                />
               </li>
-              <li>
+              {/* <li>
                 <Link
                   href="/shipping"
                   className="hover:text-foreground transition-colors"
                 >
                   Shipping Policy
                 </Link>
-              </li>
+              </li> */}
             </ul>
           </div>
         </div>

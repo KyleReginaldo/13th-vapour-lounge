@@ -146,11 +146,6 @@ function ConfirmationContent() {
               </span>
             </div>
 
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Tax (12%)</span>
-              <span>{formatCurrency(order.tax)}</span>
-            </div>
-
             {order.discount && order.discount > 0 && (
               <div className="flex justify-between text-sm text-green-600">
                 <span>Discount</span>
@@ -256,7 +251,7 @@ function ConfirmationContent() {
             </Link>
           </Button>
           <Button asChild variant="outline" className="flex-1">
-            <Link href="/account/orders">
+            <Link href="/profile?tab=orders">
               <Package className="mr-2 h-4 w-4" />
               View My Orders
             </Link>

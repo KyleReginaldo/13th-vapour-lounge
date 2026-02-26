@@ -153,9 +153,6 @@ export const VariantSelector = ({
           <div className="flex items-start justify-between gap-4">
             <div className="space-y-1">
               <p className="text-sm font-medium">Selected Variant</p>
-              <p className="text-xs text-muted-foreground">
-                SKU: {selectedVariant.sku}
-              </p>
             </div>
             {selectedVariant.stock_quantity !== null && (
               <div className="text-right">

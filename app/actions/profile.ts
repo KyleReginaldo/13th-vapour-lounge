@@ -79,6 +79,8 @@ export type ProfileOrder = {
   created_at: string | null;
   items: {
     id: string;
+    product_id: string | null;
+    product_slug: string | null;
     product_name: string;
     quantity: number;
     unit_price: number;
@@ -101,7 +103,7 @@ export async function getUserOrders(): Promise<ProfileOrder[]> {
       `
       id, order_number, status, payment_status, payment_method,
       total, subtotal, created_at,
-      order_items(id, product_name, quantity, unit_price, subtotal, variant_attributes)
+      order_items(id, product_id, product_name, quantity, unit_price, subtotal, variant_attributes, products(slug))
     `
     )
     .eq("customer_id", user.id)
@@ -112,8 +114,115 @@ export async function getUserOrders(): Promise<ProfileOrder[]> {
 
   return data.map((o) => ({
     ...o,
-    items: (o.order_items as any[]) || [],
+    items: ((o.order_items as any[]) || []).map((item: any) => ({
+      ...item,
+      product_slug: item.products?.slug ?? null,
+    })),
   }));
+}
+
+/**
+ * Re-add all items from a past order to the user's cart.
+ * Returns { added, skipped } counts.
+ */
+export async function reorderItems(orderId: string): Promise<{
+  success: boolean;
+  added: number;
+  skipped: number;
+  message: string;
+}> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user)
+    return {
+      success: false,
+      added: 0,
+      skipped: 0,
+      message: "Not authenticated.",
+    };
+
+  // Fetch order items (must belong to this user)
+  const { data: order } = await supabase
+    .from("orders")
+    .select("id, order_items(product_id, quantity)")
+    .eq("id", orderId)
+    .eq("customer_id", user.id)
+    .single();
+
+  if (!order)
+    return {
+      success: false,
+      added: 0,
+      skipped: 0,
+      message: "Order not found.",
+    };
+
+  let added = 0;
+  let skipped = 0;
+
+  for (const item of (order.order_items as any[]) || []) {
+    if (!item.product_id) {
+      skipped++;
+      continue;
+    }
+
+    // Check stock
+    const { data: product } = await supabase
+      .from("products")
+      .select("stock_quantity, is_published")
+      .eq("id", item.product_id)
+      .single();
+
+    if (
+      !product ||
+      !product.is_published ||
+      (product.stock_quantity ?? 0) < 1
+    ) {
+      skipped++;
+      continue;
+    }
+
+    // Upsert into cart (increment if already there)
+    const { data: existing } = await supabase
+      .from("carts")
+      .select("id, quantity")
+      .eq("user_id", user.id)
+      .eq("product_id", item.product_id)
+      .is("variant_id", null)
+      .maybeSingle();
+
+    if (existing) {
+      const newQty = Math.min(
+        existing.quantity + item.quantity,
+        product.stock_quantity ?? 99
+      );
+      await supabase
+        .from("carts")
+        .update({ quantity: newQty })
+        .eq("id", existing.id);
+    } else {
+      await supabase.from("carts").insert({
+        user_id: user.id,
+        product_id: item.product_id,
+        variant_id: null,
+        quantity: Math.min(item.quantity, product.stock_quantity ?? 99),
+      });
+    }
+    added++;
+  }
+
+  revalidatePath("/cart");
+  return {
+    success: true,
+    added,
+    skipped,
+    message:
+      added > 0
+        ? `${added} item${added !== 1 ? "s" : ""} added to cart${skipped > 0 ? ` (${skipped} unavailable)` : ""}.`
+        : "All items from this order are currently unavailable.",
+  };
 }
 
 export async function updateProfile(formData: FormData) {
@@ -210,12 +319,11 @@ export async function requestPasswordChangeOTP(
   } = await supabase.auth.getUser();
   if (!user) return { status: "error", message: "Not authenticated." };
 
-  const currentPassword = formData.get("currentPassword") as string;
   const newPassword = formData.get("newPassword") as string;
   const confirmPassword = formData.get("confirmPassword") as string;
 
   // Validate new passwords
-  if (!currentPassword || !newPassword || !confirmPassword) {
+  if (!newPassword || !confirmPassword) {
     return { status: "error", message: "All fields are required." };
   }
   if (newPassword !== confirmPassword) {
@@ -226,15 +334,6 @@ export async function requestPasswordChangeOTP(
       status: "error",
       message: "Password must be at least 6 characters.",
     };
-  }
-
-  // Re-authenticate to verify current password
-  const { error: signInError } = await supabase.auth.signInWithPassword({
-    email: user.email!,
-    password: currentPassword,
-  });
-  if (signInError) {
-    return { status: "error", message: "Current password is incorrect." };
   }
 
   // Generate OTP
@@ -381,4 +480,130 @@ export async function verifyPasswordChangeOTP(
 
   revalidatePath("/profile");
   return { status: "success" };
+}
+
+// ── Order Tracking ────────────────────────────────────────────────────────────
+
+export type OrderTracking = {
+  id: string;
+  order_number: string;
+  status: string | null;
+  payment_status: string | null;
+  payment_method: string | null;
+  tracking_number: string | null;
+  subtotal: number;
+  shipping_cost: number | null;
+  discount: number | null;
+  tax: number;
+  total: number;
+  created_at: string | null;
+  paid_at: string | null;
+  shipped_at: string | null;
+  delivered_at: string | null;
+  completed_at: string | null;
+  cancelled_at: string | null;
+  shipping_full_name: string | null;
+  shipping_address_line1: string | null;
+  shipping_address_line2: string | null;
+  shipping_city: string | null;
+  shipping_postal_code: string | null;
+  shipping_country: string | null;
+  shipping_phone: string | null;
+  customer_notes: string | null;
+  items: {
+    id: string;
+    product_id: string | null;
+    product_name: string;
+    quantity: number;
+    unit_price: number;
+    subtotal: number;
+    variant_attributes: Record<string, string> | null;
+    product_slug: string | null;
+    product_image: string | null;
+  }[];
+  statusHistory: {
+    id: string;
+    from_status: string | null;
+    to_status: string;
+    notes: string | null;
+    created_at: string | null;
+  }[];
+};
+
+export async function getOrderTracking(
+  orderId: string
+): Promise<{ data: OrderTracking | null; error?: string }> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { data: null, error: "Not authenticated." };
+
+  // Main order query
+  const { data: order, error: orderErr } = await supabase
+    .from("orders")
+    .select(
+      `
+      id, order_number, status, payment_status, payment_method,
+      tracking_number, subtotal, shipping_cost, discount, tax, total,
+      created_at, paid_at, shipped_at, delivered_at, completed_at, cancelled_at,
+      shipping_full_name, shipping_address_line1, shipping_address_line2,
+      shipping_city, shipping_postal_code, shipping_country, shipping_phone,
+      customer_notes,
+      order_items(id, product_id, product_name, quantity, unit_price, subtotal, variant_attributes)
+    `
+    )
+    .eq("id", orderId)
+    .eq("customer_id", user.id)
+    .single();
+
+  if (orderErr || !order) {
+    console.error("[getOrderTracking] query failed:", orderErr?.message, {
+      orderId,
+      userId: user.id,
+    });
+    return { data: null, error: orderErr?.message ?? "Order not found." };
+  }
+
+  // Fetch product slugs/images separately — best-effort
+  const productIds: string[] = ((order.order_items as any[]) || [])
+    .map((i: any) => i.product_id)
+    .filter(Boolean);
+
+  const productMap: Record<
+    string,
+    { slug: string | null; image: string | null }
+  > = {};
+  if (productIds.length > 0) {
+    const { data: products } = await supabase
+      .from("products")
+      .select("id, slug, images")
+      .in("id", productIds);
+    for (const p of products ?? []) {
+      productMap[(p as any).id] = {
+        slug: (p as any).slug ?? null,
+        image: ((p as any).images as string[] | null)?.[0] ?? null,
+      };
+    }
+  }
+
+  // Status history — best-effort, silently ignored if table/relation isn't set up
+  const { data: historyRows } = await supabase
+    .from("order_status_history")
+    .select("id, from_status, to_status, notes, created_at")
+    .eq("order_id", orderId)
+    .order("created_at", { ascending: true });
+
+  return {
+    data: {
+      ...(order as any),
+      items: ((order.order_items as any[]) || []).map((item: any) => ({
+        ...item,
+        product_slug: productMap[item.product_id]?.slug ?? null,
+        product_image: productMap[item.product_id]?.image ?? null,
+      })),
+      statusHistory: (historyRows ?? []) as OrderTracking["statusHistory"],
+    },
+  };
 }

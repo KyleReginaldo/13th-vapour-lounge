@@ -5,6 +5,7 @@ import { QuantityInput } from "@/components/product/QuantityInput";
 import { VariantSelector } from "@/components/product/VariantSelector";
 import { Separator } from "@/components/ui/separator";
 import type { Json } from "@/database.types";
+import { AlertTriangle, ChevronDown } from "lucide-react";
 import { useState } from "react";
 
 interface ProductVariant {
@@ -29,11 +30,13 @@ interface Product {
 interface ProductDetailClientProps {
   product: Product;
   variants: ProductVariant[];
+  isLoggedIn?: boolean;
 }
 
 export function ProductDetailClient({
   product,
   variants,
+  isLoggedIn = false,
 }: ProductDetailClientProps) {
   const hasVariants = product.has_variants && variants.length > 0;
 
@@ -85,22 +88,41 @@ export function ProductDetailClient({
         />
       </div>
 
+      {/* Health Warning */}
+      <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5">
+        <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+        <p className="text-[12px] text-amber-800 leading-snug font-medium">
+          <strong>WARNING:</strong> This product contains nicotine. Nicotine is
+          an addictive chemical.
+        </p>
+      </div>
+
       {/* Add to Cart Button */}
-      <AddToCartButton
-        productId={product.id}
-        variantId={selectedVariantId}
-        quantity={quantity}
-        disabled={!isInStock}
-        className="w-full"
-      />
+      {(product.stock_quantity ?? 0) >= 1 &&
+        (product.stock_quantity ?? 0) >= quantity && (
+          <AddToCartButton
+            productId={product.id}
+            variantId={selectedVariantId}
+            quantity={quantity}
+            disabled={!isInStock}
+            className="w-full"
+            isLoggedIn={isLoggedIn}
+          />
+        )}
 
       {/* Out of Stock Message */}
       {!isInStock && (
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-center">
+        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-center space-y-2">
           <p className="font-medium text-destructive">Currently Out of Stock</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Check back soon or contact us for availability
+          <p className="text-sm text-muted-foreground">
+            Check back soon or browse similar items below.
           </p>
+          <a
+            href="#related-products"
+            className="inline-flex items-center gap-1 text-sm font-semibold text-orange-600 hover:text-orange-700 transition-colors"
+          >
+            View Similar Products <ChevronDown className="h-4 w-4" />
+          </a>
         </div>
       )}
     </div>

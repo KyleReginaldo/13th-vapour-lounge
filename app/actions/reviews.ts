@@ -443,3 +443,148 @@ export const bulkApproveReviews = withErrorHandling(
     return success(data, `${reviewIds.length} reviews approved`);
   }
 );
+
+/**
+ * Get completed/delivered orders that have unreviewed items (for review prompt)
+ */
+export const getUnreviewedOrders = withErrorHandling(
+  async (): Promise<
+    ActionResponse<
+      {
+        orderId: string;
+        orderNumber: string;
+        completedAt: string | null;
+        items: {
+          productId: string;
+          productName: string;
+          productSlug: string | null;
+        }[];
+      }[]
+    >
+  > => {
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return success([]);
+
+    // Get completed/delivered orders
+    const { data: orders } = await supabase
+      .from("orders")
+      .select(
+        `id, order_number, created_at,
+         order_items(product_id, product_name, products(slug))`
+      )
+      .eq("customer_id", user.id)
+      .in("status", ["completed", "delivered"])
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    if (!orders || orders.length === 0) return success([]);
+
+    // Get products already reviewed by this user
+    const { data: reviewed } = await supabase
+      .from("product_reviews")
+      .select("product_id")
+      .eq("user_id", user.id);
+
+    const reviewedIds = new Set((reviewed || []).map((r) => r.product_id));
+
+    const result = orders
+      .map((order: any) => {
+        const unreviewedItems = (order.order_items || [])
+          .filter(
+            (item: any) => item.product_id && !reviewedIds.has(item.product_id)
+          )
+          .map((item: any) => ({
+            productId: item.product_id,
+            productName: item.product_name,
+            productSlug: item.products?.slug ?? null,
+          }));
+        return {
+          orderId: order.id,
+          orderNumber: order.order_number,
+          completedAt: order.created_at,
+          items: unreviewedItems,
+        };
+      })
+      .filter((o: any) => o.items.length > 0);
+
+    return success(result);
+  }
+);
+
+export const submitProductReview = withErrorHandling(
+  async (input: {
+    productId: string;
+    orderId: string;
+    rating: number;
+    title: string;
+    comment: string;
+  }): Promise<ActionResponse> => {
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return error("You must be logged in", ErrorCode.UNAUTHORIZED);
+
+    // Check the order belongs to this user and is completed/delivered
+    const { data: order } = await supabase
+      .from("orders")
+      .select("id, status")
+      .eq("id", input.orderId)
+      .eq("customer_id", user.id)
+      .in("status", ["completed", "delivered"])
+      .maybeSingle();
+
+    if (!order) {
+      return error(
+        "Order not found or not yet completed",
+        ErrorCode.VALIDATION_ERROR
+      );
+    }
+
+    // Check for duplicate review
+    const { data: existing } = await supabase
+      .from("product_reviews")
+      .select("id")
+      .eq("product_id", input.productId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (existing) {
+      return error(
+        "You have already reviewed this product",
+        ErrorCode.CONFLICT
+      );
+    }
+
+    const { error: insertError } = await supabase
+      .from("product_reviews")
+      .insert({
+        product_id: input.productId,
+        user_id: user.id,
+        order_id: input.orderId,
+        rating: input.rating,
+        title: input.title.trim(),
+        review_text: input.comment.trim(),
+        verified_purchase: true,
+        is_approved: false,
+      });
+
+    if (insertError) {
+      return error(
+        `Failed to submit review: ${insertError.message}`,
+        ErrorCode.SERVER_ERROR
+      );
+    }
+
+    revalidatePath("/profile");
+    return success(
+      null,
+      "Review submitted! It will be visible after moderation."
+    );
+  }
+);

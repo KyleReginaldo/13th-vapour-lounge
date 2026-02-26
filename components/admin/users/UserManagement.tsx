@@ -344,16 +344,6 @@ export function UserManagement() {
                             variant="outline"
                             onClick={() => {
                               setSelectedUser(user);
-                              setActionDialog("changeRole");
-                            }}
-                          >
-                            <Shield className="h-3 w-3" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setSelectedUser(user);
                               setActionDialog("logout");
                             }}
                           >
@@ -478,11 +468,13 @@ export function UserManagement() {
                     <SelectValue placeholder="Select role..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {roles?.map((role: any) => (
-                      <SelectItem key={role.id} value={role.id}>
-                        {role.name}
-                      </SelectItem>
-                    ))}
+                    {roles
+                      ?.filter((role: any) => role.name !== "admin")
+                      .map((role: any) => (
+                        <SelectItem key={role.id} value={role.id}>
+                          {role.name}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>

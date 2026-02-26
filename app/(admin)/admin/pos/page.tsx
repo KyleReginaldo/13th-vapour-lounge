@@ -1,12 +1,20 @@
 "use client";
 
 import { POSCart } from "@/components/admin/pos/POSCart";
+import { ParkedOrdersPanel } from "@/components/admin/pos/ParkedOrdersPanel";
 import { TransactionHistory } from "@/components/admin/pos/TransactionHistory";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
-import { Clock, DollarSign, History, ShoppingCart, Store } from "lucide-react";
+import {
+  Clock,
+  DollarSign,
+  History,
+  ParkingSquare,
+  ShoppingCart,
+  Store,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 
 type Product = {
@@ -71,6 +79,8 @@ export default function POSPage() {
     transactionCount: 0,
   });
   const [isLoading, setIsLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("pos");
+  const [cartToRestore, setCartToRestore] = useState<any[] | null>(null);
 
   // Load products from database
   useEffect(() => {
@@ -193,10 +203,6 @@ export default function POSPage() {
               <span>Subtotal:</span>
               <span>${formatCurrency(transaction.subtotal)}</span>
             </div>
-            <div class="item">
-              <span>Tax (12%):</span>
-              <span>${formatCurrency(transaction.tax)}</span>
-            </div>
             <div class="item total">
               <span>TOTAL:</span>
               <span>${formatCurrency(transaction.total)}</span>
@@ -230,6 +236,11 @@ export default function POSPage() {
       receiptWindow.document.close();
       receiptWindow.print();
     }
+  };
+
+  const handleRestoreParkedOrder = (cartData: any[]) => {
+    setCartToRestore(cartData);
+    setActiveTab("pos");
   };
 
   const todaySales = currentShift.sales;
@@ -299,15 +310,19 @@ export default function POSPage() {
 
       {/* Main Content */}
       <div className="h-[calc(100vh-80px)]">
-        <Tabs defaultValue="pos" className="h-full">
-          <TabsList className="grid w-full grid-cols-2 max-w-md mx-auto mt-4">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full">
+          <TabsList className="grid w-full grid-cols-3 max-w-lg mx-auto mt-4">
             <TabsTrigger value="pos" className="flex items-center gap-2">
               <ShoppingCart className="h-4 w-4" />
               Point of Sale
             </TabsTrigger>
+            <TabsTrigger value="parked" className="flex items-center gap-2">
+              <ParkingSquare className="h-4 w-4" />
+              Parked Orders
+            </TabsTrigger>
             <TabsTrigger value="history" className="flex items-center gap-2">
               <History className="h-4 w-4" />
-              Transaction History
+              History
             </TabsTrigger>
           </TabsList>
 
@@ -315,7 +330,13 @@ export default function POSPage() {
             <POSCart
               products={products}
               onTransactionComplete={handleTransactionComplete}
+              cartToRestore={cartToRestore}
+              onRestoreConsumed={() => setCartToRestore(null)}
             />
+          </TabsContent>
+
+          <TabsContent value="parked" className="h-full mt-4 p-6">
+            <ParkedOrdersPanel onRestoreOrder={handleRestoreParkedOrder} />
           </TabsContent>
 
           <TabsContent value="history" className="h-full mt-4 p-6">

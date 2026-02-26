@@ -11,6 +11,7 @@ import {
 import { logAudit } from "@/lib/auth/audit";
 import { requireRole } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import {
   clockInSchema,
   clockOutSchema,
@@ -56,7 +57,7 @@ export const createStaffMember = withErrorHandling(
       contact_number: validated.contact_number,
       date_of_birth: validated.date_of_birth,
       token_identifier: authData.user.id,
-      role_id: validated.role_id,
+      role_id: "13fead46-a738-4feb-bc84-0edb7dd2a523",
       is_verified: true,
     });
 
@@ -106,7 +107,7 @@ export const updateStaffMember = withErrorHandling(
 export const changeStaffRole = withErrorHandling(
   async (userId: string, roleId: string): Promise<ActionResponse> => {
     await requireRole(["admin"]);
-    const supabase = await createClient();
+    const supabase = createServiceClient();
 
     const { data, error: updateError } = await supabase
       .from("users")

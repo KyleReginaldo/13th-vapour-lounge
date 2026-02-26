@@ -46,8 +46,8 @@ export const createPOSOrderWithSplitPayment = withErrorHandling(
       0
     );
     const subtotal = total;
-    const tax = subtotal * 0.12; // 12% tax
-    const totalWithTax = subtotal + tax;
+    const tax = 0;
+    const totalWithTax = subtotal;
 
     const paymentsTotal = payments.reduce((sum, p) => sum + p.amount, 0);
 
@@ -94,6 +94,7 @@ export const createPOSOrderWithSplitPayment = withErrorHandling(
         subtotal,
         tax,
         total: totalWithTax,
+        shipping_cost: 0,
         payment_method: primaryPayment.method,
         payment_status: "paid",
         status: "processing",

@@ -28,6 +28,7 @@ export const productSchema = z.object({
   barcode: z.string().optional(),
   qr_code: z.string().optional(),
   product_type: z.string().optional(),
+  has_variants: z.boolean().optional(),
   track_inventory: z.boolean().optional(),
   is_published: z.boolean().optional(),
   is_featured: z.boolean().optional(),

@@ -5,6 +5,7 @@ import { useAddToCart } from "@/lib/queries/cart";
 import { useCartStore } from "@/lib/stores/cart-store";
 import { cn } from "@/lib/utils";
 import { Check, Loader2, ShoppingCart } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 interface AddToCartButtonProps {
@@ -13,6 +14,7 @@ interface AddToCartButtonProps {
   quantity: number;
   disabled?: boolean;
   className?: string;
+  isLoggedIn?: boolean;
 }
 
 export const AddToCartButton = ({
@@ -21,13 +23,20 @@ export const AddToCartButton = ({
   quantity,
   disabled = false,
   className,
+  isLoggedIn = false,
 }: AddToCartButtonProps) => {
   const addToCart = useAddToCart();
   const { openCart } = useCartStore();
+  const router = useRouter();
   const [isSuccess, setIsSuccess] = useState(false);
 
   const handleClick = async () => {
     if (disabled) return;
+
+    if (!isLoggedIn) {
+      router.push("/sign-in");
+      return;
+    }
 
     try {
       await addToCart.mutateAsync({
@@ -36,18 +45,9 @@ export const AddToCartButton = ({
         quantity,
       });
 
-      // Show success state
       setIsSuccess(true);
-
-      // Open cart drawer after a short delay
-      setTimeout(() => {
-        openCart();
-      }, 500);
-
-      // Reset success state
-      setTimeout(() => {
-        setIsSuccess(false);
-      }, 2000);
+      setTimeout(() => openCart(), 500);
+      setTimeout(() => setIsSuccess(false), 2000);
     } catch (error) {
       console.error("Failed to add to cart:", error);
     }

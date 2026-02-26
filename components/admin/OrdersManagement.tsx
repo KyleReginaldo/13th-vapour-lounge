@@ -744,10 +744,6 @@ export function OrdersManagement({ orders }: OrdersManagementProps) {
                       {formatCurrency(selectedOrder.shipping_cost ?? 0)}
                     </span>
                   </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Tax</span>
-                    <span>{formatCurrency(selectedOrder.tax)}</span>
-                  </div>
                   <Separator />
                   <div className="flex justify-between font-bold text-base">
                     <span>Total</span>

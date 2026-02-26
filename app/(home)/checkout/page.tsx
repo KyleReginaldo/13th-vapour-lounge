@@ -1,6 +1,7 @@
 "use client";
 
 import { uploadPaymentProof } from "@/app/actions/images";
+import { getPublicShippingSettings } from "@/app/actions/settings";
 import { CheckoutStepper } from "@/components/checkout/CheckoutStepper";
 import { OrderSummary } from "@/components/checkout/OrderSummary";
 import {
@@ -32,10 +33,6 @@ const CHECKOUT_STEPS = [
   { id: 3, name: "Review", description: "Order" },
 ];
 
-const TAX_RATE = 0.12; // 12% VAT
-const FREE_SHIPPING_THRESHOLD = 1000; // Free shipping over ₱1000
-const SHIPPING_COST = 100; // ₱100 flat rate
-
 export default function CheckoutPage() {
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState(1);
@@ -45,11 +42,19 @@ export default function CheckoutPage() {
   // Cart Data
   const [cartItems, setCartItems] = useState<Cart[]>([]);
 
+  // Shipping settings from DB
+  const [shippingFee, setShippingFee] = useState(50);
+  const [freeShippingThreshold, setFreeShippingThreshold] = useState(0);
+
   // Shipping
   const [savedAddresses, setSavedAddresses] = useState<ShippingAddress[]>([]);
   const [selectedAddress, setSelectedAddress] = useState<
     ShippingAddress | undefined
   >();
+  const [userProfile, setUserProfile] = useState<{
+    fullName: string;
+    phone: string;
+  }>({ fullName: "", phone: "" });
 
   // Payment
   const [paymentMethod, setPaymentMethod] = useState<
@@ -64,14 +69,26 @@ export default function CheckoutPage() {
     return sum + price * item.quantity;
   }, 0);
 
-  const shippingCost = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_COST;
-  const tax = subtotal * TAX_RATE;
-  const total = subtotal + tax + shippingCost;
+  const shippingCost =
+    freeShippingThreshold > 0 && subtotal >= freeShippingThreshold
+      ? 0
+      : shippingFee;
+  const tax = 0;
+  const total = subtotal + shippingCost;
 
-  // Load cart items and saved addresses
+  // Load cart items, saved addresses, and shipping settings
   useEffect(() => {
     async function loadCheckoutData() {
       const supabase = createClient();
+
+      // Fetch shipping settings
+      const shippingResult = await getPublicShippingSettings();
+      if (shippingResult?.success && shippingResult.data) {
+        setShippingFee(shippingResult.data.shipping_fee ?? 50);
+        setFreeShippingThreshold(
+          shippingResult.data.free_shipping_threshold ?? 0
+        );
+      }
 
       // Get current user
       const {
@@ -123,10 +140,82 @@ export default function CheckoutPage() {
         }
       }
 
+      // Load user profile for auto-fill
+      const { data: profile } = await supabase
+        .from("users")
+        .select("first_name, last_name, middle_name, contact_number")
+        .eq("id", user.id)
+        .single();
+
+      if (profile) {
+        const fullName = [
+          profile.first_name,
+          profile.middle_name,
+          profile.last_name,
+        ]
+          .filter(Boolean)
+          .join(" ");
+        setUserProfile({
+          fullName,
+          phone: profile.contact_number ?? "",
+        });
+      }
+
       setIsLoading(false);
     }
 
     loadCheckoutData();
+  }, [router]);
+
+  // Realtime: re-sync cart whenever quantities change
+  useEffect(() => {
+    const supabase = createClient();
+    let userId: string | null = null;
+
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      userId = user.id;
+
+      const channel = supabase
+        .channel("checkout-cart-sync")
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "carts",
+            filter: `user_id=eq.${user.id}`,
+          },
+          async () => {
+            // Re-fetch fresh cart data
+            const { data: cart } = await supabase
+              .from("carts")
+              .select(
+                `
+                *,
+                product:products (
+                  *,
+                  product_images (*)
+                ),
+                variant:product_variants (*)
+              `
+              )
+              .eq("user_id", user.id)
+              .order("created_at", { ascending: false });
+
+            if (cart && cart.length > 0) {
+              setCartItems(cart as Cart[]);
+            } else {
+              router.push("/cart");
+            }
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    });
   }, [router]);
 
   // Handle address selection
@@ -156,6 +245,24 @@ export default function CheckoutPage() {
       const newAddress = data as ShippingAddress;
       setSavedAddresses([...savedAddresses, newAddress]);
       setSelectedAddress(newAddress);
+    }
+  };
+
+  // Handle address deletion
+  const handleAddressDelete = async (addressId: string) => {
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("customer_addresses")
+      .delete()
+      .eq("id", addressId);
+
+    if (!error) {
+      const updated = savedAddresses.filter((a) => a.id !== addressId);
+      setSavedAddresses(updated);
+      // If the deleted address was selected, auto-select the first remaining one
+      if (selectedAddress?.id === addressId) {
+        setSelectedAddress(updated[0]);
+      }
     }
   };
 
@@ -376,7 +483,10 @@ export default function CheckoutPage() {
                     savedAddresses={savedAddresses}
                     onAddressSelect={handleAddressSelect}
                     onAddressCreate={handleAddressCreate}
+                    onAddressDelete={handleAddressDelete}
                     selectedAddressId={selectedAddress?.id}
+                    defaultFullName={userProfile.fullName}
+                    defaultPhone={userProfile.phone}
                   />
                 </div>
               </div>

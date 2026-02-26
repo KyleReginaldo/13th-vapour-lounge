@@ -14,6 +14,23 @@ import { createClient } from "@/lib/supabase/server";
 import { productSchema, type ProductInput } from "@/lib/validations/product";
 import { revalidatePath } from "next/cache";
 
+// Minimal type for raw product rows returned from Supabase select queries
+type ProductImageRow = { url: string; is_primary: boolean | null };
+type ProductRow = {
+  id: string;
+  slug: string;
+  name: string;
+  base_price: number;
+  compare_at_price: number | null;
+  stock_quantity: number | null;
+  average_rating: number | null;
+  total_reviews: number | null;
+  is_featured: boolean | null;
+  created_at: string | null;
+  has_variants: boolean | null;
+  product_images?: ProductImageRow[] | null;
+};
+
 export type ProductFormData = {
   name: string;
   sku: string;
@@ -30,6 +47,7 @@ export type ProductFormData = {
   barcode?: string;
   qr_code?: string;
   product_type?: string;
+  has_variants?: boolean;
   track_inventory?: boolean;
   is_published?: boolean;
   is_featured?: boolean;
@@ -41,7 +59,7 @@ export type ProductFormData = {
 export const createProduct = withErrorHandling(
   async (formData: ProductInput): Promise<ActionResponse> => {
     // Require staff access
-    const user = await requireRole(["admin", "staff"]);
+    await requireRole(["admin", "staff"]);
 
     // Validate input
     const validated = validateInput(productSchema, formData);
@@ -107,10 +125,11 @@ export const createProduct = withErrorHandling(
         barcode: validated.barcode || null,
         qr_code: validated.qr_code || null,
         product_type: validated.product_type || null,
+        has_variants: validated.has_variants ?? false,
         track_inventory: validated.track_inventory ?? true,
         is_published: validated.is_published ?? true,
         is_featured: validated.is_featured ?? false,
-      } as any)
+      })
       .select()
       .single();
 
@@ -160,7 +179,7 @@ export const updateProduct = withErrorHandling(
     formData: Partial<ProductFormData>
   ): Promise<ActionResponse> => {
     // Require staff access
-    const user = await requireRole(["admin", "staff"]);
+    await requireRole(["admin", "staff"]);
 
     const supabase = await createClient();
 
@@ -204,8 +223,8 @@ export const updateProduct = withErrorHandling(
  */
 export const deleteProduct = withErrorHandling(
   async (productId: string): Promise<ActionResponse> => {
-    // Require staff access
-    const user = await requireRole(["admin", "staff"]);
+    // Require admin access only — staff cannot delete products
+    await requireRole(["admin"]);
 
     const supabase = await createClient();
 
@@ -326,6 +345,7 @@ export async function getProducts(page = 1, pageSize = 20, category?: string) {
         total_reviews,
         is_featured,
         created_at,
+        has_variants,
         product_images(url, is_primary)
       `,
         { count: "exact" }
@@ -360,9 +380,9 @@ export async function getProducts(page = 1, pageSize = 20, category?: string) {
     }
 
     // Transform data to include primary_image
-    const products = (data || []).map((product: any) => {
+    const products = (data || []).map((product: ProductRow) => {
       const primaryImage = product.product_images?.find(
-        (img: any) => img.is_primary
+        (img: ProductImageRow) => img.is_primary
       );
       const firstImage = product.product_images?.[0];
 
@@ -377,6 +397,7 @@ export async function getProducts(page = 1, pageSize = 20, category?: string) {
         total_reviews: product.total_reviews,
         is_featured: product.is_featured,
         created_at: product.created_at,
+        has_variants: product.has_variants,
         primary_image: primaryImage?.url || firstImage?.url || null,
       };
     });
@@ -478,6 +499,7 @@ export async function getRelatedProducts(
       stock_quantity,
       is_featured,
       created_at,
+      has_variants,
       product_images(url, is_primary)
     `
     )
@@ -503,9 +525,9 @@ export async function getRelatedProducts(
   }
 
   // Transform data to include primary_image
-  const products = (data || []).map((product: any) => {
+  const products = (data || []).map((product: ProductRow) => {
     const primaryImage = product.product_images?.find(
-      (img: any) => img.is_primary
+      (img: ProductImageRow) => img.is_primary
     );
     const firstImage = product.product_images?.[0];
 
@@ -520,6 +542,7 @@ export async function getRelatedProducts(
       total_reviews: product.total_reviews,
       is_featured: product.is_featured,
       created_at: product.created_at,
+      has_variants: product.has_variants,
       primary_image: primaryImage?.url || firstImage?.url || null,
     };
   });
@@ -538,6 +561,7 @@ export const searchProducts = withErrorHandling(
     priceMin?: number;
     priceMax?: number;
     inStockOnly?: boolean;
+    sortBy?: string;
     limit?: number;
     page?: number;
   }): Promise<ActionResponse> => {
@@ -560,6 +584,7 @@ export const searchProducts = withErrorHandling(
         total_reviews,
         is_featured,
         created_at,
+        has_variants,
         is_published,
         category_id,
         brand_id,
@@ -611,6 +636,30 @@ export const searchProducts = withErrorHandling(
       query = query.gt("stock_quantity", 0);
     }
 
+    // Sorting
+    switch (params.sortBy) {
+      case "price-asc":
+        query = query.order("base_price", { ascending: true });
+        break;
+      case "price-desc":
+        query = query.order("base_price", { ascending: false });
+        break;
+      case "name-asc":
+        query = query.order("name", { ascending: true });
+        break;
+      case "name-desc":
+        query = query.order("name", { ascending: false });
+        break;
+      case "rating":
+        query = query.order("average_rating", { ascending: false });
+        break;
+      case "popular":
+        query = query.order("total_reviews", { ascending: false });
+        break;
+      default: // "newest"
+        query = query.order("created_at", { ascending: false });
+    }
+
     query = query.range(offset, offset + limit - 1);
 
     const { data, count, error: fetchError } = await query;
@@ -620,9 +669,9 @@ export const searchProducts = withErrorHandling(
     }
 
     // Transform data to include primary_image
-    const products = (data || []).map((product: any) => {
+    const products = (data || []).map((product: ProductRow) => {
       const primaryImage = product.product_images?.find(
-        (img: any) => img.is_primary
+        (img: ProductImageRow) => img.is_primary
       );
       const firstImage = product.product_images?.[0];
 
@@ -637,6 +686,7 @@ export const searchProducts = withErrorHandling(
         total_reviews: product.total_reviews,
         is_featured: product.is_featured,
         created_at: product.created_at,
+        has_variants: product.has_variants,
         primary_image: primaryImage?.url || firstImage?.url || null,
       };
     });

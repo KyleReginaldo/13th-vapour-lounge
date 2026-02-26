@@ -1,15 +1,27 @@
 "use client";
 
 import {
+  getMyVerificationStatus,
+  submitAgeVerification,
+} from "@/app/actions/age-verification";
+import {
+  reorderItems,
   requestPasswordChangeOTP,
   updateProfile,
   verifyPasswordChangeOTP,
   type PasswordChangeState,
   type ProfileOrder,
 } from "@/app/actions/profile";
+import { submitProductReview } from "@/app/actions/reviews";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { type UserWithRole } from "@/lib/auth/supabase-auth";
 import { cn } from "@/lib/utils";
 import {
@@ -17,22 +29,36 @@ import {
   ArrowRight,
   Calendar,
   CheckCircle2,
+  ChevronRight,
+  Clock,
   CreditCard,
+  FileText,
   KeyRound,
   Loader2,
   Lock,
   Mail,
   Package,
   Phone,
+  RefreshCw,
   RotateCcw,
   ShieldCheck,
   ShoppingBag,
+  Star,
+  Truck,
+  Upload,
   User,
   UserCircle,
 } from "lucide-react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { Suspense, useActionState, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import {
+  Suspense,
+  useActionState,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useFormStatus } from "react-dom";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -184,9 +210,345 @@ function OverviewTab({ user }: { user: UserWithRole }) {
   );
 }
 
+// ── Order Detail Sheet ───────────────────────────────────────────────────────
+
+function OrderDetailSheet({
+  order,
+  open,
+  onClose,
+  onReorder,
+  reorderingId,
+}: {
+  order: ProfileOrder | null;
+  open: boolean;
+  onClose: () => void;
+  onReorder: (id: string) => void;
+  reorderingId: string | null;
+}) {
+  const [reviewingProductId, setReviewingProductId] = useState<string | null>(
+    null
+  );
+  const [reviewRating, setReviewRating] = useState(0);
+  const [reviewTitle, setReviewTitle] = useState("");
+  const [reviewComment, setReviewComment] = useState("");
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const [reviewSuccess, setReviewSuccess] = useState(false);
+  const [reviewedIds, setReviewedIds] = useState<Set<string>>(new Set());
+
+  const [hoveredStar, setHoveredStar] = useState(0);
+
+  const resetReview = () => {
+    setReviewRating(0);
+    setReviewTitle("");
+    setReviewComment("");
+    setReviewError(null);
+    setReviewSuccess(false);
+    setHoveredStar(0);
+  };
+
+  const handleReviewSubmit = async () => {
+    if (!order || !reviewingProductId) return;
+    if (reviewRating === 0) {
+      setReviewError("Please select a rating.");
+      return;
+    }
+    if (reviewTitle.trim().length < 3) {
+      setReviewError("Title is too short.");
+      return;
+    }
+    if (reviewComment.trim().length < 10) {
+      setReviewError("Review is too short.");
+      return;
+    }
+    setReviewSubmitting(true);
+    setReviewError(null);
+    const result = await submitProductReview({
+      productId: reviewingProductId,
+      orderId: order.id,
+      rating: reviewRating,
+      title: reviewTitle.trim(),
+      comment: reviewComment.trim(),
+    });
+    setReviewSubmitting(false);
+    if (!result.success) {
+      setReviewError(result.message ?? "Failed to submit.");
+      return;
+    }
+    setReviewSuccess(true);
+    setTimeout(() => {
+      setReviewedIds((s) => new Set([...s, reviewingProductId]));
+      setReviewingProductId(null);
+      resetReview();
+    }, 1200);
+  };
+
+  if (!order) return null;
+
+  const canReview =
+    order.status === "completed" || order.status === "delivered";
+  return (
+    <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
+      <SheetContent
+        side="right"
+        className="w-full sm:max-w-md flex flex-col gap-0 p-0 overflow-hidden"
+      >
+        {/* Header */}
+        <SheetHeader className="px-5 pt-5 pb-4 border-b border-[#F0F0F0]">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <SheetTitle className="text-[15px] font-semibold text-[#0F0F0F]">
+                {order.order_number}
+              </SheetTitle>
+              <p className="text-[12px] text-[#ADADAD] mt-0.5">
+                {order.created_at
+                  ? new Date(order.created_at).toLocaleDateString("en-PH", {
+                      year: "numeric",
+                      month: "long",
+                      day: "numeric",
+                    })
+                  : "—"}
+              </p>
+            </div>
+            <div className="flex flex-col items-end gap-1.5">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-medium text-[#ADADAD] uppercase tracking-wide">
+                  Order
+                </span>
+                <StatusBadge value={order.status} styleMap={STATUS_STYLES} />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-medium text-[#ADADAD] uppercase tracking-wide">
+                  Payment
+                </span>
+                <StatusBadge
+                  value={order.payment_status}
+                  styleMap={PAYMENT_STATUS_STYLES}
+                />
+              </div>
+            </div>
+          </div>
+        </SheetHeader>
+
+        {/* Items */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="px-5 pt-4 pb-2">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-[#ADADAD] mb-3">
+              Items ({order.items.length})
+            </p>
+            <div className="space-y-3">
+              {order.items.map((item) => (
+                <div
+                  key={item.id}
+                  className="rounded-xl border border-[#F0F0F0] bg-[#FAFAFA] px-4 py-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] font-medium text-[#0F0F0F] leading-snug">
+                        {item.product_name}
+                      </p>
+                      {item.variant_attributes &&
+                        Object.keys(item.variant_attributes).length > 0 && (
+                          <p className="text-[11px] text-[#ADADAD] mt-0.5">
+                            {Object.entries(item.variant_attributes)
+                              .map(([k, v]) => `${k}: ${v}`)
+                              .join(" · ")}
+                          </p>
+                        )}
+                      <p className="text-[11px] text-[#ADADAD] mt-1">
+                        ₱{item.unit_price.toLocaleString()} × {item.quantity}
+                      </p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1.5 shrink-0">
+                      <p className="text-[13px] font-semibold text-[#0F0F0F]">
+                        ₱{item.subtotal.toLocaleString()}
+                      </p>
+                      {canReview &&
+                        item.product_id &&
+                        !reviewedIds.has(item.product_id) && (
+                          <button
+                            onClick={() => {
+                              resetReview();
+                              setReviewingProductId(
+                                reviewingProductId === item.product_id
+                                  ? null
+                                  : item.product_id
+                              );
+                            }}
+                            className="flex items-center gap-1 text-[11px] font-medium text-amber-500 hover:text-amber-600 transition-colors"
+                          >
+                            <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
+                            {reviewingProductId === item.product_id
+                              ? "Cancel"
+                              : "Review"}
+                          </button>
+                        )}
+                      {canReview &&
+                        item.product_id &&
+                        reviewedIds.has(item.product_id) && (
+                          <span className="flex items-center gap-1 text-[11px] text-green-600">
+                            <CheckCircle2 className="h-3 w-3" /> Reviewed
+                          </span>
+                        )}
+                    </div>
+                  </div>
+
+                  {/* Inline review form */}
+                  {reviewingProductId === item.product_id && (
+                    <div className="mt-3 pt-3 border-t border-[#EBEBEB] space-y-3">
+                      {reviewSuccess ? (
+                        <div className="flex items-center gap-2 text-green-600 text-[13px] font-medium">
+                          <CheckCircle2 className="h-4 w-4" /> Review submitted!
+                        </div>
+                      ) : (
+                        <>
+                          {/* Stars */}
+                          <div className="flex gap-1">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <button
+                                key={star}
+                                type="button"
+                                onMouseEnter={() => setHoveredStar(star)}
+                                onMouseLeave={() => setHoveredStar(0)}
+                                onClick={() => setReviewRating(star)}
+                                className="transition-transform hover:scale-110"
+                              >
+                                <Star
+                                  className={`h-6 w-6 ${
+                                    star <= (hoveredStar || reviewRating)
+                                      ? "fill-amber-400 text-amber-400"
+                                      : "text-[#E0E0E0]"
+                                  }`}
+                                />
+                              </button>
+                            ))}
+                          </div>
+                          <input
+                            value={reviewTitle}
+                            onChange={(e) => setReviewTitle(e.target.value)}
+                            placeholder="Title (e.g. Great product!)"
+                            maxLength={200}
+                            className="w-full h-9 px-3 text-[12px] rounded-lg border border-[#E8E8E8] bg-white placeholder:text-[#CDCDCD] outline-none focus:border-[#0A0A0A] transition-all"
+                          />
+                          <textarea
+                            value={reviewComment}
+                            onChange={(e) => setReviewComment(e.target.value)}
+                            placeholder="Share your experience with this product..."
+                            rows={2}
+                            maxLength={2000}
+                            className="w-full px-3 py-2 text-[12px] rounded-lg border border-[#E8E8E8] bg-white placeholder:text-[#CDCDCD] outline-none focus:border-[#0A0A0A] transition-all resize-none"
+                          />
+                          {reviewError && (
+                            <p className="text-[12px] text-red-600 flex items-center gap-1">
+                              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                              {reviewError}
+                            </p>
+                          )}
+                          <button
+                            onClick={handleReviewSubmit}
+                            disabled={reviewSubmitting}
+                            className="w-full h-8 rounded-lg bg-[#0A0A0A] text-white text-[12px] font-semibold hover:bg-[#1A1A1A] disabled:opacity-60 transition-colors flex items-center justify-center gap-1.5"
+                          >
+                            {reviewSubmitting ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              "Submit Review"
+                            )}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Summary */}
+          <div className="mx-5 mt-4 rounded-xl border border-[#F0F0F0] bg-white overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#F5F5F5]">
+              <span className="text-[13px] text-[#6B6B6B]">Subtotal</span>
+              <span className="text-[13px] font-medium text-[#0F0F0F]">
+                ₱{order.subtotal.toLocaleString()}
+              </span>
+            </div>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#F5F5F5]">
+              <span className="text-[13px] text-[#6B6B6B]">Payment</span>
+              <span className="text-[13px] font-medium text-[#0F0F0F] capitalize">
+                {order.payment_method?.replace(/_/g, " ") ?? "—"}
+              </span>
+            </div>
+            <div className="flex items-center justify-between px-4 py-3">
+              <span className="text-[14px] font-semibold text-[#0F0F0F]">
+                Total
+              </span>
+              <span className="text-[14px] font-bold text-[#0F0F0F]">
+                ₱{order.total.toLocaleString()}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer actions */}
+        <div className="px-5 py-4 border-t border-[#F0F0F0] space-y-2.5">
+          <Link
+            href={`/orders/${order.id}`}
+            className="flex items-center justify-center gap-2 w-full h-10 rounded-xl bg-[#0A0A0A] text-white text-[13px] font-semibold hover:bg-[#1A1A1A] transition-colors"
+          >
+            <Truck className="h-4 w-4" />
+            Track Order
+          </Link>
+          {(order.status === "completed" || order.status === "delivered") && (
+            <Button
+              onClick={() => onReorder(order.id)}
+              disabled={reorderingId === order.id}
+              variant="outline"
+              className="w-full h-10 rounded-xl border-[#E8E8E8] text-[#3D3D3D] hover:bg-[#F5F5F5] disabled:opacity-60"
+            >
+              {reorderingId === order.id ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <RefreshCw className="h-4 w-4 mr-2" />
+              )}
+              Order Again
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            onClick={onClose}
+            className="w-full h-10 rounded-xl border-[#E8E8E8] text-[#3D3D3D] hover:bg-[#F5F5F5]"
+          >
+            Close
+          </Button>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 // ── Orders Tab ───────────────────────────────────────────────────────────────
 
 function OrdersTab({ orders }: { orders: ProfileOrder[] }) {
+  const router = useRouter();
+  const [reorderingId, setReorderingId] = useState<string | null>(null);
+  const [reorderMsg, setReorderMsg] = useState<string | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<ProfileOrder | null>(null);
+
+  const handleReorder = async (orderId: string) => {
+    setReorderingId(orderId);
+    setReorderMsg(null);
+    try {
+      const result = await reorderItems(orderId);
+      setReorderMsg(result.message);
+      if (result.added > 0) {
+        setSelectedOrder(null);
+        setTimeout(() => router.push("/cart"), 800);
+      }
+    } finally {
+      setReorderingId(null);
+    }
+  };
+
   if (orders.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-[#E0E0E0] bg-white py-16 text-center">
@@ -205,96 +567,123 @@ function OrdersTab({ orders }: { orders: ProfileOrder[] }) {
   }
 
   return (
-    <div className="space-y-3">
-      {orders.map((order) => (
-        <div
-          key={order.id}
-          className="rounded-2xl border border-[#EBEBEB] bg-white overflow-hidden"
-        >
-          {/* Order header */}
-          <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-[#F5F5F5]">
-            <div>
-              <p className="text-[13px] font-semibold text-[#0F0F0F]">
-                {order.order_number}
-              </p>
-              <p className="text-[12px] text-[#ADADAD]">
-                {order.created_at
-                  ? new Date(order.created_at).toLocaleDateString("en-PH", {
-                      year: "numeric",
-                      month: "short",
-                      day: "numeric",
-                    })
-                  : "—"}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <StatusBadge value={order.status} styleMap={STATUS_STYLES} />
-              <StatusBadge
-                value={order.payment_status}
-                styleMap={PAYMENT_STATUS_STYLES}
-              />
-            </div>
-          </div>
-
-          {/* Items */}
-          <div className="divide-y divide-[#F5F5F5]">
-            {order.items.slice(0, 3).map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center justify-between gap-3 px-5 py-3"
-              >
-                <div className="min-w-0">
-                  <p className="text-[13px] font-medium text-[#0F0F0F] truncate">
-                    {item.product_name}
-                  </p>
-                  {item.variant_attributes && (
-                    <p className="text-[11px] text-[#ADADAD]">
-                      {Object.entries(item.variant_attributes)
-                        .map(([k, v]) => `${k}: ${v}`)
-                        .join(", ")}
-                    </p>
-                  )}
+    <>
+      <OrderDetailSheet
+        order={selectedOrder}
+        open={!!selectedOrder}
+        onClose={() => setSelectedOrder(null)}
+        onReorder={handleReorder}
+        reorderingId={reorderingId}
+      />
+      <div className="space-y-3">
+        {orders.map((order) => (
+          <div
+            key={order.id}
+            onClick={() => setSelectedOrder(order)}
+            className="rounded-2xl border border-[#EBEBEB] bg-white overflow-hidden cursor-pointer hover:border-[#D5D5D5] hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)] transition-all"
+          >
+            {/* Order header */}
+            <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-[#F5F5F5]">
+              <div>
+                <p className="text-[13px] font-semibold text-[#0F0F0F]">
+                  {order.order_number}
+                </p>
+                <p className="text-[12px] text-[#ADADAD]">
+                  {order.created_at
+                    ? new Date(order.created_at).toLocaleDateString("en-PH", {
+                        year: "numeric",
+                        month: "short",
+                        day: "numeric",
+                      })
+                    : "—"}
+                </p>
+              </div>
+              <div className="flex flex-col items-end gap-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-medium text-[#ADADAD] uppercase tracking-wide">
+                    Order
+                  </span>
+                  <StatusBadge value={order.status} styleMap={STATUS_STYLES} />
                 </div>
-                <div className="text-right shrink-0">
-                  <p className="text-[13px] font-medium text-[#0F0F0F]">
-                    ₱{item.subtotal.toLocaleString()}
-                  </p>
-                  <p className="text-[11px] text-[#ADADAD]">
-                    qty {item.quantity}
-                  </p>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-medium text-[#ADADAD] uppercase tracking-wide">
+                    Payment
+                  </span>
+                  <StatusBadge
+                    value={order.payment_status}
+                    styleMap={PAYMENT_STATUS_STYLES}
+                  />
                 </div>
               </div>
-            ))}
-            {order.items.length > 3 && (
-              <div className="px-5 py-2.5">
-                <p className="text-[12px] text-[#ADADAD]">
-                  +{order.items.length - 3} more item
-                  {order.items.length - 3 > 1 ? "s" : ""}
+            </div>
+
+            {/* Items */}
+            <div className="divide-y divide-[#F5F5F5]">
+              {order.items.slice(0, 3).map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between gap-3 px-5 py-3"
+                >
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-medium text-[#0F0F0F] truncate">
+                      {item.product_name}
+                    </p>
+                    {item.variant_attributes && (
+                      <p className="text-[11px] text-[#ADADAD]">
+                        {Object.entries(item.variant_attributes)
+                          .map(([k, v]) => `${k}: ${v}`)
+                          .join(", ")}
+                      </p>
+                    )}
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-[13px] font-medium text-[#0F0F0F]">
+                      ₱{item.subtotal.toLocaleString()}
+                    </p>
+                    <p className="text-[11px] text-[#ADADAD]">
+                      qty {item.quantity}
+                    </p>
+                  </div>
+                </div>
+              ))}
+              {order.items.length > 3 && (
+                <div className="px-5 py-2.5">
+                  <p className="text-[12px] text-[#ADADAD]">
+                    +{order.items.length - 3} more item
+                    {order.items.length - 3 > 1 ? "s" : ""}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between gap-3 px-5 py-3 bg-[#FAFAFA] border-t border-[#F0F0F0]">
+              <div className="flex items-center gap-1.5 text-[12px] text-[#ADADAD]">
+                <CreditCard className="h-3.5 w-3.5" />
+                {order.payment_method?.replace(/_/g, " ") ?? "—"}
+              </div>
+              <div className="flex items-center gap-2">
+                <p className="text-[14px] font-semibold text-[#0F0F0F]">
+                  ₱{order.total.toLocaleString()}
                 </p>
+                <ChevronRight className="h-4 w-4 text-[#ADADAD]" />
+              </div>
+            </div>
+            {reorderMsg && reorderingId === null && (
+              <div className="px-5 py-2 text-[12px] text-green-600 bg-green-50 border-t border-green-100">
+                {reorderMsg}
               </div>
             )}
           </div>
-
-          {/* Footer */}
-          <div className="flex items-center justify-between gap-3 px-5 py-3 bg-[#FAFAFA] border-t border-[#F0F0F0]">
-            <div className="flex items-center gap-1.5 text-[12px] text-[#ADADAD]">
-              <CreditCard className="h-3.5 w-3.5" />
-              {order.payment_method?.replace(/_/g, " ") ?? "—"}
-            </div>
-            <p className="text-[14px] font-semibold text-[#0F0F0F]">
-              Total: ₱{order.total.toLocaleString()}
-            </p>
-          </div>
-        </div>
-      ))}
-    </div>
+        ))}
+      </div>
+    </>
   );
 }
 
 // ── Settings Tab ─────────────────────────────────────────────────────────────
 
 function SettingsTab({ user }: { user: UserWithRole }) {
-  const [showCurrentPw, setShowCurrentPw] = useState(false);
   const [showNewPw, setShowNewPw] = useState(false);
   const inputCls =
     "h-10 text-[14px] rounded-xl border-[1.5px] border-[#E8E8E8] bg-white placeholder:text-[#CDCDCD] focus-visible:border-[#0A0A0A] focus-visible:ring-0 focus-visible:shadow-[0_0_0_3px_rgba(10,10,10,0.06)] transition-all";
@@ -311,6 +700,103 @@ function SettingsTab({ user }: { user: UserWithRole }) {
 
   const otpStep = requestState.status === "otp_sent";
   const passwordChanged = verifyState.status === "success";
+
+  // OTP digit boxes
+  const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""]);
+  const otpBoxRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  const handleOtpDigitChange = (index: number, value: string) => {
+    const digit = value.replace(/\D/g, "").slice(-1);
+    const next = [...otpDigits];
+    next[index] = digit;
+    setOtpDigits(next);
+    if (digit && index < 5) otpBoxRefs.current[index + 1]?.focus();
+  };
+
+  const handleOtpDigitKeyDown = (
+    index: number,
+    e: React.KeyboardEvent<HTMLInputElement>
+  ) => {
+    if (e.key === "Backspace" && !otpDigits[index] && index > 0) {
+      otpBoxRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handleOtpDigitPaste = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const pasted = e.clipboardData
+      .getData("text")
+      .replace(/\D/g, "")
+      .slice(0, 6);
+    if (!pasted) return;
+    const next = [...otpDigits];
+    for (let i = 0; i < 6; i++) next[i] = pasted[i] ?? "";
+    setOtpDigits(next);
+    otpBoxRefs.current[Math.min(pasted.length, 5)]?.focus();
+  };
+
+  // Age verification state
+  const [ageVerifStatus, setAgeVerifStatus] = useState<null | {
+    verified_at: string | null;
+    rejection_reason: string | null;
+  }>(null);
+  const [ageVerifLoading, setAgeVerifLoading] = useState(true);
+  const [ageVerifSubmitting, setAgeVerifSubmitting] = useState(false);
+  const [ageVerifError, setAgeVerifError] = useState<string | null>(null);
+  const [ageVerifSuccess, setAgeVerifSuccess] = useState(false);
+  const [consentTerms, setConsentTerms] = useState(false);
+  const [consentPrivacy, setConsentPrivacy] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+  useEffect(() => {
+    getMyVerificationStatus()
+      .then((res) => {
+        if (res.success && res.data) {
+          setAgeVerifStatus(
+            res.data as {
+              verified_at: string | null;
+              rejection_reason: string | null;
+            }
+          );
+        }
+        setAgeVerifLoading(false);
+      })
+      .catch(() => setAgeVerifLoading(false));
+  }, []);
+
+  const handleAgeVerifSubmit = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!selectedFile || !consentTerms || !consentPrivacy) return;
+      setAgeVerifSubmitting(true);
+      setAgeVerifError(null);
+      const fd = new FormData();
+      fd.append("idDocument", selectedFile);
+      fd.append("consentToTerms", "true");
+      fd.append("consentToPrivacy", "true");
+      const result = await submitAgeVerification(fd);
+      setAgeVerifSubmitting(false);
+      if (result.success) {
+        setAgeVerifSuccess(true);
+      } else {
+        setAgeVerifError(
+          result.message ?? "Failed to submit. Please try again."
+        );
+      }
+    },
+    [selectedFile, consentTerms, consentPrivacy]
+  );
+
+  const isVerified = user.is_verified;
+  const isPending =
+    !isVerified &&
+    (ageVerifSuccess ||
+      (ageVerifStatus &&
+        !ageVerifStatus.verified_at &&
+        !ageVerifStatus.rejection_reason));
+  const isRejected =
+    !isVerified && ageVerifStatus && ageVerifStatus.rejection_reason;
 
   return (
     <div className="space-y-6">
@@ -338,7 +824,8 @@ function SettingsTab({ user }: { user: UserWithRole }) {
                 name="firstName"
                 defaultValue={user.first_name}
                 required
-                className={inputCls}
+                readOnly
+                className={cn(inputCls, "bg-[#F9F9F9] cursor-not-allowed")}
               />
             </div>
             <div className="space-y-1.5">
@@ -353,7 +840,8 @@ function SettingsTab({ user }: { user: UserWithRole }) {
                 name="lastName"
                 defaultValue={user.last_name}
                 required
-                className={inputCls}
+                readOnly
+                className={cn(inputCls, "bg-[#F9F9F9] cursor-not-allowed")}
               />
             </div>
             <div className="space-y-1.5">
@@ -367,7 +855,8 @@ function SettingsTab({ user }: { user: UserWithRole }) {
                 id="middleName"
                 name="middleName"
                 defaultValue={user.middle_name ?? ""}
-                className={inputCls}
+                readOnly
+                className={cn(inputCls, "bg-[#F9F9F9] cursor-not-allowed")}
               />
             </div>
             <div className="space-y-1.5">
@@ -382,9 +871,13 @@ function SettingsTab({ user }: { user: UserWithRole }) {
                 name="suffix"
                 defaultValue={user.suffix ?? ""}
                 placeholder="Jr., Sr., III"
-                className={inputCls}
+                readOnly
+                className={cn(inputCls, "bg-[#F9F9F9] cursor-not-allowed")}
               />
             </div>
+            <p className="text-[11px] text-[#ADADAD] -mt-2 sm:col-span-2">
+              Name fields are locked to match your verification ID.
+            </p>
             <div className="space-y-1.5 sm:col-span-2">
               <Label
                 htmlFor="contactNumber"
@@ -441,31 +934,6 @@ function SettingsTab({ user }: { user: UserWithRole }) {
                 </p>
               </div>
             )}
-            <div className="space-y-1.5">
-              <Label
-                htmlFor="currentPassword"
-                className="text-[13px] font-medium text-[#3D3D3D]"
-              >
-                Current Password
-              </Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#ADADAD]" />
-                <Input
-                  id="currentPassword"
-                  name="currentPassword"
-                  type={showCurrentPw ? "text" : "password"}
-                  required
-                  className={cn(inputCls, "pl-9 pr-10")}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowCurrentPw(!showCurrentPw)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#ADADAD] hover:text-[#3D3D3D] transition-colors text-xs"
-                >
-                  {showCurrentPw ? "Hide" : "Show"}
-                </button>
-              </div>
-            </div>
             <div className="space-y-1.5">
               <Label
                 htmlFor="newPassword"
@@ -540,28 +1008,31 @@ function SettingsTab({ user }: { user: UserWithRole }) {
                   </p>
                 </div>
               )}
-              <div className="space-y-1.5">
-                <Label
-                  htmlFor="otp"
-                  className="text-[13px] font-medium text-[#3D3D3D]"
-                >
+              {/* Hidden input carries the joined OTP value to the server action */}
+              <input type="hidden" name="otp" value={otpDigits.join("")} />
+
+              <div className="space-y-2">
+                <Label className="text-[13px] font-medium text-[#3D3D3D]">
                   Verification Code
                 </Label>
-                <Input
-                  id="otp"
-                  name="otp"
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]{6}"
-                  maxLength={6}
-                  placeholder="123456"
-                  autoFocus
-                  required
-                  className={cn(
-                    inputCls,
-                    "text-center text-2xl font-bold tracking-[0.4em] placeholder:tracking-normal placeholder:text-lg"
-                  )}
-                />
+                <div className="flex gap-2" onPaste={handleOtpDigitPaste}>
+                  {otpDigits.map((digit, i) => (
+                    <input
+                      key={i}
+                      ref={(el) => {
+                        otpBoxRefs.current[i] = el;
+                      }}
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={1}
+                      value={digit}
+                      autoFocus={i === 0}
+                      onChange={(e) => handleOtpDigitChange(i, e.target.value)}
+                      onKeyDown={(e) => handleOtpDigitKeyDown(i, e)}
+                      className="w-full h-12 text-center text-[20px] font-semibold text-[#0F0F0F] border-[1.5px] border-[#E8E8E8] rounded-xl bg-white outline-none transition-all duration-150 focus:border-[#0A0A0A] focus:-translate-y-px focus:shadow-[0_0_0_3px_rgba(10,10,10,0.06)] caret-transparent"
+                    />
+                  ))}
+                </div>
               </div>
               <div className="pt-2 flex items-center justify-between gap-3">
                 <button
@@ -581,6 +1052,187 @@ function SettingsTab({ user }: { user: UserWithRole }) {
             </form>
           </div>
         )}
+      </div>
+
+      {/* Age Verification */}
+      <div className="rounded-2xl border border-[#EBEBEB] bg-white overflow-hidden">
+        <div className="px-6 py-4 border-b border-[#F5F5F5] flex items-center justify-between">
+          <div>
+            <p className="font-semibold text-[#0F0F0F] text-[15px]">
+              Age Verification
+            </p>
+            <p className="text-[13px] text-[#ADADAD]">
+              Verify your age to access all products
+            </p>
+          </div>
+          {isVerified && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 border border-green-200 px-3 py-1 text-[12px] font-semibold text-green-700">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              Verified
+            </span>
+          )}
+          {isPending && !isVerified && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 border border-amber-200 px-3 py-1 text-[12px] font-semibold text-amber-700">
+              <Clock className="h-3.5 w-3.5" />
+              Pending Review
+            </span>
+          )}
+        </div>
+
+        <div className="p-6">
+          {ageVerifLoading ? (
+            <div className="flex items-center justify-center py-6">
+              <Loader2 className="h-5 w-5 animate-spin text-[#ADADAD]" />
+            </div>
+          ) : isVerified ? (
+            <div className="flex flex-col items-center gap-3 py-2 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-50">
+                <ShieldCheck className="h-6 w-6 text-green-500" />
+              </div>
+              <p className="font-semibold text-[#0F0F0F]">
+                You&apos;re verified!
+              </p>
+              <p className="text-[13px] text-[#ADADAD]">
+                Your age has been verified. You have full access to all
+                products.
+              </p>
+            </div>
+          ) : isPending ? (
+            <div className="flex flex-col items-center gap-3 py-2 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-50">
+                <Clock className="h-6 w-6 text-amber-500" />
+              </div>
+              <p className="font-semibold text-[#0F0F0F]">Under Review</p>
+              <p className="text-[13px] text-[#ADADAD]">
+                Your ID has been submitted and is awaiting admin review. This
+                usually takes 1–2 business days.
+              </p>
+            </div>
+          ) : (
+            <form onSubmit={handleAgeVerifSubmit} className="space-y-4">
+              {isRejected && (
+                <div className="flex items-start gap-2.5 rounded-xl bg-red-50 border border-red-100 px-4 py-3">
+                  <AlertCircle className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-[13px] font-semibold text-red-700">
+                      Previous submission rejected
+                    </p>
+                    <p className="text-[12px] text-red-600 mt-0.5">
+                      {ageVerifStatus?.rejection_reason ??
+                        "Your previous ID submission was not accepted. Please upload a valid government-issued ID."}
+                    </p>
+                  </div>
+                </div>
+              )}
+              {ageVerifError && (
+                <div className="flex items-start gap-2.5 rounded-xl bg-red-50 border border-red-100 px-4 py-3">
+                  <AlertCircle className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
+                  <p className="text-[13px] text-red-700">{ageVerifError}</p>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label className="text-[13px] font-medium text-[#3D3D3D]">
+                  Upload ID
+                </Label>
+                <div
+                  className="border-2 border-dashed border-[#E8E8E8] rounded-xl p-6 text-center cursor-pointer hover:border-[#0A0A0A] transition-colors"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {selectedFile ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <FileText className="h-5 w-5 text-[#0A0A0A]" />
+                      <span className="text-[13px] font-medium text-[#0A0A0A] truncate max-w-[200px]">
+                        {selectedFile.name}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-2">
+                      <Upload className="h-7 w-7 text-[#ADADAD]" />
+                      <p className="text-[13px] text-[#ADADAD]">
+                        Click to upload your ID
+                      </p>
+                      <p className="text-[11px] text-[#CDCDCD]">
+                        JPG, PNG or PDF — max 5MB
+                      </p>
+                    </div>
+                  )}
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,application/pdf"
+                  className="hidden"
+                  onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
+                />
+              </div>
+
+              <div className="space-y-2.5">
+                <label className="flex items-start gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={consentTerms}
+                    onChange={(e) => setConsentTerms(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-[#E8E8E8] accent-[#0A0A0A]"
+                  />
+                  <span className="text-[12px] text-[#3D3D3D]">
+                    I agree to the{" "}
+                    <a
+                      href="/terms"
+                      className="underline text-[#0A0A0A]"
+                      target="_blank"
+                    >
+                      Terms &amp; Conditions
+                    </a>{" "}
+                    and confirm that I am at least 18 years old.
+                  </span>
+                </label>
+                <label className="flex items-start gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={consentPrivacy}
+                    onChange={(e) => setConsentPrivacy(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-[#E8E8E8] accent-[#0A0A0A]"
+                  />
+                  <span className="text-[12px] text-[#3D3D3D]">
+                    I consent to the processing of my ID document as outlined in
+                    the{" "}
+                    <a
+                      href="/privacy"
+                      className="underline text-[#0A0A0A]"
+                      target="_blank"
+                    >
+                      Privacy Policy
+                    </a>
+                    .
+                  </span>
+                </label>
+              </div>
+
+              <div className="pt-2 flex justify-end">
+                <Button
+                  type="submit"
+                  disabled={
+                    ageVerifSubmitting ||
+                    !selectedFile ||
+                    !consentTerms ||
+                    !consentPrivacy
+                  }
+                  className="h-10 px-6 rounded-xl bg-[#0A0A0A] hover:bg-[#222] text-white text-[13px] font-semibold disabled:opacity-50"
+                >
+                  {ageVerifSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Submitting…
+                    </>
+                  ) : (
+                    "Submit for Verification"
+                  )}
+                </Button>
+              </div>
+            </form>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -622,7 +1274,13 @@ export function ProfileClient({
   orders: ProfileOrder[];
   defaultTab?: Tab;
 }) {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>(defaultTab);
+
+  const handleTabChange = (tab: Tab) => {
+    setActiveTab(tab);
+    router.push(`/profile?tab=${tab}`, { scroll: false });
+  };
 
   return (
     <div className="min-h-screen bg-[#F7F7F7]">
@@ -647,7 +1305,7 @@ export function ProfileClient({
           {TABS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
-              onClick={() => setActiveTab(id)}
+              onClick={() => handleTabChange(id)}
               className={cn(
                 "flex-1 flex items-center justify-center gap-2 rounded-xl py-2.5 text-[13px] font-medium transition-all",
                 activeTab === id

@@ -74,12 +74,21 @@ async function getDashboardStats() {
 export default async function AdminDashboard() {
   const user = await getCurrentUser();
   const stats = await getDashboardStats();
+  const isAdmin = (user?.roles as any)?.name === "admin";
 
   return (
     <div className="container mx-auto p-6">
       <AdminDashboardClient
         stats={stats}
-        userName={user?.first_name || "Admin"}
+        userName={
+          user?.role_id === "f56a95cd-fdf4-4af8-b370-d932962195a6"
+            ? "Admin"
+            : user?.role_id ===
+                "13fead46-a738-4feb-bc84-0edb7dd2a523-fdf4-4af8-b370-d932962195a6"
+              ? "Staff"
+              : user?.first_name || "User"
+        }
+        isAdmin={isAdmin}
       />
     </div>
   );

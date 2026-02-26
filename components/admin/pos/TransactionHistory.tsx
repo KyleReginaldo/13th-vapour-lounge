@@ -253,10 +253,6 @@ export function TransactionHistory({
                                     {formatCurrency(transaction.subtotal)}
                                   </span>
                                 </div>
-                                <div className="flex justify-between">
-                                  <span>Tax (12%):</span>
-                                  <span>{formatCurrency(transaction.tax)}</span>
-                                </div>
                                 <Separator className="border-dashed" />
                                 <div className="flex justify-between font-bold text-base">
                                   <span>Total:</span>

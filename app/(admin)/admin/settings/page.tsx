@@ -1,7 +1,9 @@
 import { getShopSettings } from "@/app/actions/settings";
 import { SettingsPage as SettingsComponent } from "@/components/admin/settings/SettingsPage";
+import { requireRole } from "@/lib/auth/roles";
 
 export default async function SettingsPageWrapper() {
+  await requireRole(["admin"]);
   const result = await getShopSettings();
   const settings = result?.success ? (result.data as Record<string, any>) : {};
 

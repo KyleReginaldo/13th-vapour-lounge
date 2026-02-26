@@ -7,7 +7,7 @@ import {
   withErrorHandling,
   type ActionResponse,
 } from "@/lib/actions/utils";
-import { requireRole } from "@/lib/auth/roles";
+import { getCurrentUser, requireRole } from "@/lib/auth/roles";
 import {
   ageVerificationResultTemplate,
   lowStockAlertTemplate,
@@ -411,5 +411,255 @@ export const sendWelcomeEmail = withErrorHandling(
     });
 
     return success(null, "Welcome email sent");
+  }
+);
+
+// ─── In-App Notification CRUD ────────────────────────────────────────────────
+
+export type NotificationRow = {
+  id: string;
+  title: string;
+  message: string;
+  type: string;
+  link: string | null;
+  is_read: boolean;
+  read_at: string | null;
+  created_at: string | null;
+};
+
+/**
+ * Fetch the current user's in-app notifications (latest 30)
+ */
+export const getNotifications = withErrorHandling(
+  async (): Promise<ActionResponse<NotificationRow[]>> => {
+    const user = await getCurrentUser();
+    if (!user) return error("Unauthenticated", ErrorCode.UNAUTHORIZED);
+
+    const supabase = await createClient();
+    const { data, error: fetchError } = await supabase
+      .from("notifications")
+      .select("id, title, message, type, link, is_read, read_at, created_at")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(30);
+
+    if (fetchError) return error(fetchError.message, ErrorCode.SERVER_ERROR);
+    return success(data as NotificationRow[], "OK");
+  }
+);
+
+/**
+ * Mark a single notification as read
+ */
+export const markNotificationRead = withErrorHandling(
+  async (notificationId: string): Promise<ActionResponse> => {
+    const user = await getCurrentUser();
+    if (!user) return error("Unauthenticated", ErrorCode.UNAUTHORIZED);
+
+    const supabase = await createClient();
+    const { error: updateError } = await supabase
+      .from("notifications")
+      .update({ is_read: true, read_at: new Date().toISOString() })
+      .eq("id", notificationId)
+      .eq("user_id", user.id);
+
+    if (updateError) return error(updateError.message, ErrorCode.SERVER_ERROR);
+    return success(null, "Marked as read");
+  }
+);
+
+/**
+ * Mark all notifications as read for the current user
+ */
+export const markAllNotificationsRead = withErrorHandling(
+  async (): Promise<ActionResponse> => {
+    const user = await getCurrentUser();
+    if (!user) return error("Unauthenticated", ErrorCode.UNAUTHORIZED);
+
+    const supabase = await createClient();
+    const { error: updateError } = await supabase
+      .from("notifications")
+      .update({ is_read: true, read_at: new Date().toISOString() })
+      .eq("user_id", user.id)
+      .eq("is_read", false);
+
+    if (updateError) return error(updateError.message, ErrorCode.SERVER_ERROR);
+    return success(null, "All marked as read");
+  }
+);
+
+// ─── Stock Notification Templates ────────────────────────────────────────────
+
+function buildStockNotification(
+  type: "low_stock" | "out_of_stock" | "critical_stock" | "expiring_stock",
+  productName: string,
+  currentQty?: number,
+  expiryDate?: string
+): { title: string; message: string } {
+  switch (type) {
+    case "low_stock":
+      return {
+        title: `Low Stock: ${productName}`,
+        message: `The stock for ${productName} is running low (${currentQty} remaining). You might want to restock soon.`,
+      };
+    case "out_of_stock":
+      return {
+        title: `Out of Stock: ${productName}`,
+        message: `${productName} is currently out of stock (0 units). Restocking is recommended to avoid missed sales.`,
+      };
+    case "critical_stock":
+      return {
+        title: `Critical Stock: ${productName}`,
+        message: `${productName} is at a critical stock level (${currentQty} left). Restock immediately to prevent out-of-stock issues.`,
+      };
+    case "expiring_stock":
+      return {
+        title: `Expiring Stock: ${productName}`,
+        message: `The stock for ${productName} is nearing expiration (expires on ${expiryDate}). Please review and take action.`,
+      };
+  }
+}
+
+/**
+ * Scan inventory and create in-app notifications for stock issues.
+ * Deduplicates: skips products that already have an unread notification for the same event.
+ */
+export const checkAndCreateStockNotifications = withErrorHandling(
+  async (): Promise<ActionResponse> => {
+    await requireRole(["admin", "staff"]);
+    const supabase = await createClient();
+
+    // Get all admin/staff users to notify
+    const { data: adminUsers } = await supabase
+      .from("users")
+      .select("id, roles!inner(name)")
+      .in("roles.name", ["admin", "staff"]);
+
+    if (!adminUsers || adminUsers.length === 0)
+      return success(null, "No admin users to notify");
+
+    const adminIds = adminUsers.map((u: any) => u.id);
+
+    // Fetch products with stock data including expiry
+    const { data: products } = await supabase
+      .from("products")
+      .select(
+        "id, name, slug, stock_quantity, low_stock_threshold, expiry_date"
+      )
+      .eq("is_active", true);
+
+    if (!products) return success(null, "No products found");
+
+    // For each admin, gather existing unread notifications to avoid duplicates
+    const now = new Date();
+    const thirtyDaysFromNow = new Date(
+      now.getTime() + 30 * 24 * 60 * 60 * 1000
+    );
+
+    const inserts: {
+      user_id: string;
+      title: string;
+      message: string;
+      type: string;
+      link: string;
+    }[] = [];
+
+    for (const product of products as any[]) {
+      const qty = product.stock_quantity ?? 0;
+      const threshold = product.low_stock_threshold ?? 10;
+      const criticalThreshold = Math.ceil(threshold * 0.3); // 30% of threshold = critical
+      const productLink = `/admin/inventory`;
+
+      // Determine notification type
+      let notifType:
+        | "low_stock"
+        | "out_of_stock"
+        | "critical_stock"
+        | "expiring_stock"
+        | null = null;
+
+      if (qty === 0) {
+        notifType = "out_of_stock";
+      } else if (qty <= criticalThreshold) {
+        notifType = "critical_stock";
+      } else if (qty <= threshold) {
+        notifType = "low_stock";
+      }
+
+      // Check expiry (within 30 days)
+      if (product.expiry_date) {
+        const expiry = new Date(product.expiry_date);
+        if (expiry <= thirtyDaysFromNow && expiry >= now) {
+          const formattedExpiry = expiry.toLocaleDateString("en-PH", {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+          });
+
+          for (const adminId of adminIds) {
+            // Check for existing unread expiry notification for this product
+            const { count } = await supabase
+              .from("notifications")
+              .select("id", { count: "exact", head: true })
+              .eq("user_id", adminId)
+              .eq("type", "expiring_stock")
+              .eq("is_read", false)
+              .like("title", `%${product.name}%`);
+
+            if (!count || count === 0) {
+              const { title, message } = buildStockNotification(
+                "expiring_stock",
+                product.name,
+                undefined,
+                formattedExpiry
+              );
+              inserts.push({
+                user_id: adminId,
+                title,
+                message,
+                type: "expiring_stock",
+                link: productLink,
+              });
+            }
+          }
+        }
+      }
+
+      if (notifType) {
+        for (const adminId of adminIds) {
+          const { count } = await supabase
+            .from("notifications")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", adminId)
+            .eq("type", notifType)
+            .eq("is_read", false)
+            .like("title", `%${product.name}%`);
+
+          if (!count || count === 0) {
+            const { title, message } = buildStockNotification(
+              notifType,
+              product.name,
+              qty
+            );
+            inserts.push({
+              user_id: adminId,
+              title,
+              message,
+              type: notifType,
+              link: productLink,
+            });
+          }
+        }
+      }
+    }
+
+    if (inserts.length > 0) {
+      await supabase.from("notifications").insert(inserts);
+    }
+
+    return success(
+      { created: inserts.length },
+      `${inserts.length} notifications created`
+    );
   }
 );

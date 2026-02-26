@@ -63,9 +63,6 @@ export const ProductInfo = ({
           {product.name}
         </h1>
 
-        {/* SKU */}
-        <p className="text-sm text-muted-foreground">SKU: {product.sku}</p>
-
         {/* Badges */}
         <div className="flex flex-wrap gap-2">
           {product.is_featured && <Badge variant="secondary">Featured</Badge>}

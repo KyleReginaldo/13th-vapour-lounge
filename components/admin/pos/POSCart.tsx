@@ -30,7 +30,7 @@ import {
   X,
 } from "lucide-react";
 import Image from "next/image";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ReceiptPrinter } from "./ReceiptPrinter";
 import { SplitPaymentModal } from "./SplitPaymentModal";
@@ -85,9 +85,16 @@ type CartItem = {
 interface POSCartProps {
   products: Product[];
   onTransactionComplete: (transaction: any) => void;
+  cartToRestore?: CartItem[] | null;
+  onRestoreConsumed?: () => void;
 }
 
-export function POSCart({ products, onTransactionComplete }: POSCartProps) {
+export function POSCart({
+  products,
+  onTransactionComplete,
+  cartToRestore,
+  onRestoreConsumed,
+}: POSCartProps) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
@@ -110,10 +117,16 @@ export function POSCart({ products, onTransactionComplete }: POSCartProps) {
     (sum, item) => sum + item.price * item.quantity,
     0
   );
-  const taxRate = 0.12;
-  const tax = subtotal * taxRate;
-  const total = subtotal + tax;
+  const total = subtotal;
   const itemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+
+  // Consume a restored parked order
+  useEffect(() => {
+    if (cartToRestore && cartToRestore.length > 0) {
+      setCart(cartToRestore);
+      onRestoreConsumed?.();
+    }
+  }, [cartToRestore]);
 
   // Park order mutation
   const parkOrderMutation = useMutation({
@@ -263,7 +276,7 @@ export function POSCart({ products, onTransactionComplete }: POSCartProps) {
           id: result.data.order.id,
           items: cart,
           subtotal,
-          tax,
+          tax: 0,
           total,
           payments,
           timestamp: new Date().toISOString(),
@@ -573,10 +586,6 @@ export function POSCart({ products, onTransactionComplete }: POSCartProps) {
                       <span className="font-medium">
                         {formatCurrency(subtotal)}
                       </span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Tax (12%)</span>
-                      <span className="font-medium">{formatCurrency(tax)}</span>
                     </div>
                     <Separator />
                     <div className="flex justify-between text-lg font-bold">

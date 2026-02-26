@@ -33,6 +33,7 @@ interface DashboardStatsProps {
     averageOrderValue: number;
   };
   userName: string;
+  isAdmin?: boolean;
 }
 
 const StatCard = ({
@@ -81,8 +82,12 @@ const StatCard = ({
   </Card>
 );
 
-export function AdminDashboardClient({ stats, userName }: DashboardStatsProps) {
-  const quickActions = [
+export function AdminDashboardClient({
+  stats,
+  userName,
+  isAdmin = false,
+}: DashboardStatsProps) {
+  const allQuickActions = [
     {
       title: "Add Product",
       href: "/admin/products",
@@ -110,8 +115,13 @@ export function AdminDashboardClient({ stats, userName }: DashboardStatsProps) {
       icon: TrendingUp,
       description: "View analytics and reports",
       color: "bg-orange-600 hover:bg-orange-700",
+      adminOnly: true,
     },
   ];
+
+  const quickActions = allQuickActions.filter(
+    (action) => !action.adminOnly || isAdmin
+  );
 
   return (
     <div className="space-y-8">

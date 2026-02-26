@@ -2,10 +2,12 @@
 
 import { CartBadge } from "@/components/cart/CartBadge";
 import { CartDrawer } from "@/components/cart/CartDrawer";
+import { NotificationBell } from "@/components/layout/NotificationBell";
 import { SearchAutocomplete } from "@/components/search/SearchAutocomplete";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader } from "@/components/ui/sheet";
 import { type UserWithRole } from "@/lib/auth/roles";
+import { signOut } from "@/lib/auth/supabase-auth";
 import { useCartStore } from "@/lib/stores/cart-store";
 import {
   Grid,
@@ -23,9 +25,10 @@ import Link from "next/link";
 import { useState } from "react";
 interface HeaderProps {
   user: UserWithRole | null;
+  unreadNotifCount?: number;
 }
 
-export const Header = ({ user }: HeaderProps) => {
+export const Header = ({ user, unreadNotifCount = 0 }: HeaderProps) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { openCart } = useCartStore();
 
@@ -49,12 +52,13 @@ export const Header = ({ user }: HeaderProps) => {
 
               {/* Logo */}
               <Link href="/" className="flex items-center gap-2">
-                <div className="text-xl md:text-2xl font-bold gradient-text">
+                <div className="text-xl md:text-2xl font-bold gradient-text ">
                   <Image
                     src="/logo.jpg"
                     alt="13th Vapour Lounge Logo"
                     width={48}
                     height={48}
+                    className="rounded-md"
                   />{" "}
                 </div>
               </Link>
@@ -67,6 +71,16 @@ export const Header = ({ user }: HeaderProps) => {
 
             {/* Right: Actions */}
             <div className="flex items-center gap-2 md:gap-4">
+              {/* Notification Bell — logged-in users only */}
+              {user && (
+                <NotificationBell
+                  initialUnreadCount={unreadNotifCount}
+                  isStaff={
+                    user.roles?.name === "admin" || user.roles?.name === "staff"
+                  }
+                />
+              )}
+
               <Button
                 variant="ghost"
                 size="icon"
@@ -78,26 +92,40 @@ export const Header = ({ user }: HeaderProps) => {
               </Button>
 
               {user ? (
-                <Link
-                  href={
-                    user.roles?.name === "admin"
-                      ? "/admin"
-                      : user.roles?.name === "staff"
+                <>
+                  <Link
+                    href={
+                      user.roles?.name === "admin"
                         ? "/admin"
-                        : "/profile"
-                  }
-                  className="hidden md:block"
-                >
-                  <Button variant="ghost" className="gap-2">
-                    <User className="h-5 w-5" />
-                    <span className="text-sm">
-                      {user.roles?.name === "admin" ||
-                      user.roles?.name === "staff"
-                        ? "Admin"
-                        : "Account"}
-                    </span>
-                  </Button>
-                </Link>
+                        : user.roles?.name === "staff"
+                          ? "/admin"
+                          : "/profile"
+                    }
+                    className="hidden md:block"
+                  >
+                    <Button variant="ghost" className="gap-2">
+                      <User className="h-5 w-5" />
+                      <span className="text-sm">
+                        {user.roles?.name === "admin"
+                          ? "Admin Panel"
+                          : user.roles?.name === "staff"
+                            ? "Staff Panel"
+                            : "Profile"}
+                      </span>
+                    </Button>
+                  </Link>
+                  <form action={signOut} className="hidden md:block">
+                    <Button
+                      type="submit"
+                      variant="ghost"
+                      size="icon"
+                      title="Sign Out"
+                      className="text-gray-500 hover:text-red-600 hover:bg-red-50"
+                    >
+                      <LogOut className="h-5 w-5" />
+                    </Button>
+                  </form>
+                </>
               ) : (
                 <Link href="/sign-in" className="hidden md:block">
                   <Button variant="ghost" className="gap-2">
@@ -222,13 +250,16 @@ export const Header = ({ user }: HeaderProps) => {
                     ? "Admin Dashboard"
                     : "My Account"}
                 </Link>
-                <button
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="flex w-full items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-100 transition-all"
-                >
-                  <LogOut className="h-4 w-4" />
-                  Sign Out
-                </button>
+                <form action={signOut} className="w-full">
+                  <button
+                    type="submit"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex w-full items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-gray-500 hover:bg-red-50 hover:text-red-600 transition-all"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Sign Out
+                  </button>
+                </form>
               </>
             ) : (
               <Link

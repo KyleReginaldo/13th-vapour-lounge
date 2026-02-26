@@ -12,6 +12,7 @@ import {
   CubeIcon,
   DocumentTextIcon,
   HomeIcon,
+  IdentificationIcon,
   ShieldCheckIcon,
   ShoppingBagIcon,
   ShoppingCartIcon,
@@ -87,6 +88,11 @@ const navigation = [
     icon: UsersIcon,
   },
   {
+    name: "Verifications",
+    href: "/admin/verifications",
+    icon: IdentificationIcon,
+  },
+  {
     name: "Audit Logs",
     href: "/admin/audit-logs",
     icon: ShieldCheckIcon,
@@ -98,9 +104,19 @@ const navigation = [
   },
 ];
 
-export function AdminSidebar() {
+export function AdminSidebar({ isAdmin = false }: { isAdmin?: boolean }) {
   const pathname = usePathname();
   const { isOpen, close } = useSidebarStore();
+
+  // Items only visible to admins
+  const adminOnlyRoutes = [
+    "/admin/reports",
+    "/admin/audit-logs",
+    "/admin/verifications",
+    "/admin/users",
+    "/admin/staff",
+    "/admin/settings",
+  ];
 
   return (
     <>
@@ -131,13 +147,19 @@ export function AdminSidebar() {
             alt="13th Vapour Lounge Logo"
             width={32}
             height={32}
+            className="rounded-md"
           />
+          <h4 className="ml-3 text-lg font-semibold">
+            {isAdmin ? "Admin Panel" : "Staff Panel"}
+          </h4>
         </div>
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-4">
           <div className="px-3 space-y-1">
             {navigation.map((item) => {
+              // Hide admin-only routes from staff
+              if (!isAdmin && adminOnlyRoutes.includes(item.href)) return null;
               const isActive =
                 pathname === item.href || pathname.startsWith(item.href + "/");
 

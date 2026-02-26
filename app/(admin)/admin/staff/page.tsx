@@ -1,7 +1,9 @@
 import { StaffManagement } from "@/components/admin/staff/StaffManagement";
+import { requireRole } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function StaffPage() {
+  await requireRole(["admin"]);
   const supabase = await createClient();
 
   const [{ data: staff }, { data: roles }] = await Promise.all([
@@ -12,8 +14,8 @@ export default async function StaffPage() {
     supabase.from("roles").select("id, name").order("name"),
   ]);
 
-  const staffMembers = (staff ?? []).filter((u) =>
-    ["admin", "staff"].includes((u.role as any)?.name ?? "")
+  const staffMembers = (staff ?? []).filter(
+    (u) => (u.role as any)?.name === "staff"
   );
 
   return (

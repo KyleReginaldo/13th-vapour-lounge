@@ -62,15 +62,16 @@ export const useInfiniteProducts = (
   return useInfiniteQuery({
     queryKey: queryKeys.products.list(filters),
     queryFn: async ({ pageParam = 1 }) => {
-      // Use searchProducts if there's any filter applied (query, brand, price, or stock filter)
+      // Use searchProducts if there's any filter or sort applied
       const hasFilters =
         (filters.query && filters.query.length >= 2) ||
         filters.brandId ||
         filters.priceMin !== undefined ||
         filters.priceMax !== undefined ||
-        filters.inStockOnly;
+        filters.inStockOnly ||
+        (filters.sortBy && filters.sortBy !== "newest");
 
-      if (hasFilters) {
+      if (hasFilters || filters.categoryId) {
         const result = await searchProducts({
           query: filters.query || "",
           categoryId: filters.categoryId,
@@ -78,6 +79,7 @@ export const useInfiniteProducts = (
           priceMin: filters.priceMin,
           priceMax: filters.priceMax,
           inStockOnly: filters.inStockOnly,
+          sortBy: filters.sortBy,
           page: pageParam as number,
           limit,
         });

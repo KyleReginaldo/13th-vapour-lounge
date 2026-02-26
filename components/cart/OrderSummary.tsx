@@ -31,14 +31,6 @@ export const OrderSummary = ({ summary, className }: OrderSummaryProps) => {
         </span>
       </div>
 
-      {/* VAT */}
-      <div className="flex justify-between text-sm">
-        <span className="text-gray-600 dark:text-gray-400">VAT (12%)</span>
-        <span className="font-medium text-gray-900 dark:text-gray-100">
-          {formatCurrency(summary.tax)}
-        </span>
-      </div>
-
       {/* Divider */}
       <div className="border-t border-gray-200 dark:border-gray-700" />
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { getBrands } from "@/app/actions/categories-brands";
+import { createProductVariant } from "@/app/actions/product-variants";
 import { createProduct } from "@/app/actions/products";
 import { ImageUpload } from "@/components/shared/ImageUpload";
 import { XMarkIcon } from "@heroicons/react/24/outline";
@@ -21,6 +22,14 @@ export function AddProductDialog({ isOpen, onClose }: AddProductDialogProps) {
   const [slug, setSlug] = useState("");
   const [qrCode, setQrCode] = useState("");
   const [brands, setBrands] = useState<Array<{ id: string; name: string }>>([]);
+
+  // Spec / attributes state
+  const [vapeType, setVapeType] = useState("");
+  const [specFlavor, setSpecFlavor] = useState("");
+  const [specVolume, setSpecVolume] = useState("");
+  const [specNicotine, setSpecNicotine] = useState("");
+  const [specPgvg, setSpecPgvg] = useState("");
+  const [specCoil, setSpecCoil] = useState("");
 
   // Fetch brands on mount
   useEffect(() => {
@@ -63,9 +72,21 @@ export function AddProductDialog({ isOpen, onClose }: AddProductDialogProps) {
     setLoading(true);
 
     const formData = new FormData(e.currentTarget);
+    const sku = formData.get("sku") as string;
+
+    // Build vape spec attributes
+    const attributes: Record<string, string> = {};
+    if (vapeType) attributes.vape_type = vapeType;
+    if (specFlavor.trim()) attributes.flavor_profile = specFlavor.trim();
+    if (specVolume.trim()) attributes.volume_capacity = specVolume.trim();
+    if (specNicotine.trim()) attributes.nicotine_strength = specNicotine.trim();
+    if (specPgvg) attributes.pg_vg_ratio = specPgvg;
+    if (specCoil.trim()) attributes.coil_compatibility = specCoil.trim();
+    const hasAttributes = Object.keys(attributes).length > 0;
+
     const data = {
       name: formData.get("name") as string,
-      sku: formData.get("sku") as string,
+      sku,
       description: (formData.get("description") as string) || undefined,
       category: formData.get("category") as string,
       brand_id: (formData.get("brand_id") as string) || null,
@@ -85,8 +106,9 @@ export function AddProductDialog({ isOpen, onClose }: AddProductDialogProps) {
         ? parseInt(formData.get("critical_stock_threshold") as string)
         : 5,
       barcode: (formData.get("barcode") as string) || undefined,
-      qr_code: qrCode || undefined, // Use auto-generated QR code
-      product_type: (formData.get("product_type") as string) || undefined,
+      qr_code: qrCode || undefined,
+      product_type: hasAttributes ? "variant" : "simple",
+      has_variants: hasAttributes,
       track_inventory: formData.get("track_inventory") === "on",
       is_published: formData.get("is_published") === "on",
       is_featured: formData.get("is_featured") === "on",
@@ -94,20 +116,45 @@ export function AddProductDialog({ isOpen, onClose }: AddProductDialogProps) {
 
     const result = await createProduct(data);
 
-    setLoading(false);
-
-    if (result.success) {
-      toast.success(result.message || "Product created successfully");
-      // Reset form state
-      setProductName("");
-      setSlug("");
-      setQrCode("");
-      setImages([]);
-      onClose();
-      router.refresh();
-    } else {
+    if (!result.success) {
+      setLoading(false);
       toast.error(result.message || "Failed to create product");
+      return;
     }
+
+    // If spec attributes exist, create the default variant
+    if (hasAttributes && result.data?.id) {
+      const variantResult = await createProductVariant({
+        productId: result.data.id,
+        sku: `${sku}-001`,
+        attributes,
+        price: parseFloat(formData.get("price") as string),
+        stock_quantity: parseInt(formData.get("quantity") as string),
+        is_active: true,
+      });
+      if (!variantResult.success) {
+        toast.warning(
+          "Product created but failed to save specifications. Edit the product to add them manually."
+        );
+      }
+    }
+
+    setLoading(false);
+    toast.success(result.message || "Product created successfully");
+
+    // Reset all state
+    setProductName("");
+    setSlug("");
+    setQrCode("");
+    setImages([]);
+    setVapeType("");
+    setSpecFlavor("");
+    setSpecVolume("");
+    setSpecNicotine("");
+    setSpecPgvg("");
+    setSpecCoil("");
+    onClose();
+    router.refresh();
   }
 
   return (
@@ -143,34 +190,30 @@ export function AddProductDialog({ isOpen, onClose }: AddProductDialogProps) {
                 Basic Information
               </h3>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Product Name *
-                  </label>
-                  <input
-                    type="text"
-                    name="name"
-                    required
-                    value={productName}
-                    onChange={handleNameChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    placeholder="Enter product name"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    SKU *
-                  </label>
-                  <input
-                    type="text"
-                    name="sku"
-                    required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    placeholder="e.g., VAPE-001"
-                  />
-                </div>
+              <input
+                type="hidden"
+                name="sku"
+                value={
+                  slug ||
+                  productName
+                    .toLowerCase()
+                    .replace(/[^a-z0-9]+/g, "-")
+                    .replace(/(^-|-$)/g, "")
+                }
+              />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Product Name *
+                </label>
+                <input
+                  type="text"
+                  name="name"
+                  required
+                  value={productName}
+                  onChange={handleNameChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  placeholder="Enter product name"
+                />
               </div>
 
               <div>
@@ -238,20 +281,6 @@ export function AddProductDialog({ isOpen, onClose }: AddProductDialogProps) {
                   </select>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Product Type
-                  </label>
-                  <select
-                    name="product_type"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  >
-                    <option value="">Select type</option>
-                    <option value="simple">Simple Product</option>
-                    <option value="variant">Product with Variants</option>
-                  </select>
-                </div>
-
                 <div className="flex items-center gap-4 pt-6">
                   <label className="flex items-center gap-2">
                     <input
@@ -276,6 +305,130 @@ export function AddProductDialog({ isOpen, onClose }: AddProductDialogProps) {
                     </span>
                   </label>
                 </div>
+              </div>
+            </div>
+
+            {/* Product Specifications */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">
+                Product Specifications
+              </h3>
+              <p className="text-xs text-gray-500">
+                These details appear in the Specifications table on the product
+                page.
+              </p>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Product Type
+                  </label>
+                  <select
+                    value={vapeType}
+                    onChange={(e) => setVapeType(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  >
+                    <option value="">Select vape type (optional)</option>
+                    <option value="E-Liquid">E-Liquid</option>
+                    <option value="E-Liquid (Salt Nic)">
+                      E-Liquid (Salt Nic)
+                    </option>
+                    <option value="Disposable Vape">Disposable Vape</option>
+                    <option value="Pod System">Pod System</option>
+                    <option value="Coil">Coil</option>
+                  </select>
+                </div>
+
+                {/* Flavor — shown for E-Liquid and Disposable Vape */}
+                {(vapeType === "E-Liquid" ||
+                  vapeType === "E-Liquid (Salt Nic)" ||
+                  vapeType === "Disposable Vape") && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Flavor
+                    </label>
+                    <input
+                      type="text"
+                      value={specFlavor}
+                      onChange={(e) => setSpecFlavor(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      placeholder="e.g., Watermelon Lime"
+                    />
+                  </div>
+                )}
+
+                {/* Volume — shown for E-Liquid and Disposable Vape */}
+                {(vapeType === "E-Liquid" ||
+                  vapeType === "E-Liquid (Salt Nic)" ||
+                  vapeType === "Disposable Vape") && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Volume
+                    </label>
+                    <input
+                      type="text"
+                      value={specVolume}
+                      onChange={(e) => setSpecVolume(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      placeholder="e.g., 30ml"
+                    />
+                  </div>
+                )}
+
+                {/* Nicotine Strength — E-Liquid and Disposable */}
+                {(vapeType === "E-Liquid" ||
+                  vapeType === "E-Liquid (Salt Nic)" ||
+                  vapeType === "Disposable Vape") && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Nicotine Strength
+                    </label>
+                    <input
+                      type="text"
+                      value={specNicotine}
+                      onChange={(e) => setSpecNicotine(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      placeholder="e.g., 30mg or 30mg / 50mg"
+                    />
+                  </div>
+                )}
+
+                {/* PG/VG Ratio — E-Liquid only */}
+                {(vapeType === "E-Liquid" ||
+                  vapeType === "E-Liquid (Salt Nic)") && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      PG/VG Ratio
+                    </label>
+                    <select
+                      value={specPgvg}
+                      onChange={(e) => setSpecPgvg(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    >
+                      <option value="">Select ratio (optional)</option>
+                      <option value="70/30">70/30 — High VG (sub-ohm)</option>
+                      <option value="50/50">
+                        50/50 — Balanced (pod systems)
+                      </option>
+                    </select>
+                  </div>
+                )}
+
+                {/* Coil Compatibility — Pod System and Coil */}
+                {(vapeType === "Pod System" || vapeType === "Coil") && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Coil Compatibility
+                    </label>
+                    <input
+                      type="text"
+                      value={specCoil}
+                      onChange={(e) => setSpecCoil(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      placeholder="e.g., pod/cartridge"
+                    />
+                  </div>
+                )}
               </div>
             </div>
 

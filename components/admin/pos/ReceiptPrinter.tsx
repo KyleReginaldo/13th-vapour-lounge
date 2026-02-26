@@ -163,10 +163,6 @@ export function ReceiptPrinter({
                 <span>Subtotal:</span>
                 <span>{formatCurrency(receipt.subtotal)}</span>
               </div>
-              <div className="flex justify-between">
-                <span>Tax (12%):</span>
-                <span>{formatCurrency(receipt.tax)}</span>
-              </div>
               <div className="flex justify-between font-bold text-base border-t-2 border-black pt-2 mt-2">
                 <span>TOTAL:</span>
                 <span>{formatCurrency(receipt.total)}</span>

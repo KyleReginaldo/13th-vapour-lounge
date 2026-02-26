@@ -211,17 +211,29 @@ export function InventoryManagement() {
   const getStockStatus = (
     quantity: number
   ): {
-    variant: "default" | "secondary" | "destructive" | "outline";
+    cls: string;
     label: string;
   } => {
     if (quantity === 0) {
-      return { variant: "destructive", label: "Out of Stock" };
+      return {
+        cls: "bg-red-100 text-red-700 border border-red-200",
+        label: "Out of Stock",
+      };
     } else if (quantity <= LOW_STOCK_THRESHOLD) {
-      return { variant: "secondary", label: "Low Stock" };
+      return {
+        cls: "bg-yellow-100 text-yellow-700 border border-yellow-200",
+        label: "Low Stock",
+      };
     } else if (quantity > OVERSTOCK_THRESHOLD) {
-      return { variant: "default", label: "Overstock" };
+      return {
+        cls: "bg-blue-100 text-blue-700 border border-blue-200",
+        label: "Overstock",
+      };
     } else {
-      return { variant: "default", label: "In Stock" };
+      return {
+        cls: "bg-green-100 text-green-700 border border-green-200",
+        label: "In Stock",
+      };
     }
   };
 
@@ -443,7 +455,6 @@ export function InventoryManagement() {
             <TableHeader>
               <TableRow>
                 <TableHead>Product</TableHead>
-                <TableHead>SKU</TableHead>
                 <TableHead>Brand</TableHead>
                 <TableHead>Category</TableHead>
                 <TableHead>Stock Quantity</TableHead>
@@ -479,16 +490,13 @@ export function InventoryManagement() {
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell className="font-mono text-sm">
-                      {product.sku || "N/A"}
-                    </TableCell>
                     <TableCell>{product.brands?.name || "N/A"}</TableCell>
                     <TableCell>{product.categories?.name || "N/A"}</TableCell>
                     <TableCell className="text-center font-bold">
                       {product.stock_quantity}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={status.variant}>{status.label}</Badge>
+                      <Badge className={status.cls}>{status.label}</Badge>
                     </TableCell>
                     <TableCell>{formatCurrency(product.base_price)}</TableCell>
                     <TableCell>{formatCurrency(stockValue)}</TableCell>

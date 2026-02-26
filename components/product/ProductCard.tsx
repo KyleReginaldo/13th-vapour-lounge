@@ -2,10 +2,15 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { useIsLoggedIn } from "@/lib/hooks/use-is-logged-in";
+import { useAddToCart } from "@/lib/queries/cart";
+import { useCartStore } from "@/lib/stores/cart-store";
 import { cn } from "@/lib/utils";
-import { Star } from "lucide-react";
+import { ArrowRight, Check, Loader2, ShoppingCart, Star } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 
 function formatPrice(price: number) {
   return price.toLocaleString("en-PH", {
@@ -26,6 +31,7 @@ export interface ProductCardData {
   is_featured?: boolean | null;
   primary_image?: string | null;
   created_at?: string | null;
+  has_variants?: boolean | null;
 }
 
 interface ProductCardProps {
@@ -33,6 +39,101 @@ interface ProductCardProps {
   priority?: boolean;
   className?: string;
 }
+
+// ─── Quick-add button ──────────────────────────────────────────────────────────
+
+interface CardCartButtonProps {
+  product: ProductCardData;
+  size?: "sm" | "xs";
+}
+
+const CardCartButton = ({ product, size = "sm" }: CardCartButtonProps) => {
+  const isLoggedIn = useIsLoggedIn();
+  const addToCart = useAddToCart();
+  const { openCart } = useCartStore();
+  const router = useRouter();
+  const [isSuccess, setIsSuccess] = useState(false);
+
+  const isOutOfStock = (product.stock_quantity ?? 0) <= 0;
+  const isPending = addToCart.isPending;
+  const isDisabled = isOutOfStock || isPending;
+
+  const btnSize = size === "xs" ? "h-7 w-7" : "h-8 w-8";
+  const iconSize = size === "xs" ? "h-3.5 w-3.5" : "h-4 w-4";
+
+  // Variant products need option selection — navigate to detail page
+  if (product.has_variants) {
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          router.push(`/products/${product.slug}`);
+        }}
+        className={cn(
+          "rounded-full bg-white/90 hover:bg-white shadow-md flex items-center justify-center transition-all duration-200 hover:scale-110",
+          btnSize
+        )}
+        title="Select options"
+      >
+        <ArrowRight className={cn(iconSize, "text-orange-500")} />
+      </button>
+    );
+  }
+
+  const handleClick = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isDisabled) return;
+
+    if (!isLoggedIn) {
+      router.push("/sign-in");
+      return;
+    }
+
+    try {
+      await addToCart.mutateAsync({ productId: product.id, quantity: 1 });
+      setIsSuccess(true);
+      setTimeout(() => openCart(), 500);
+      setTimeout(() => setIsSuccess(false), 2000);
+    } catch {
+      // silent
+    }
+  };
+
+  return (
+    <button
+      onClick={handleClick}
+      disabled={isDisabled}
+      title={isOutOfStock ? "Out of stock" : "Add to cart"}
+      className={cn(
+        "rounded-full shadow-md flex items-center justify-center transition-all duration-200",
+        btnSize,
+        isOutOfStock
+          ? "bg-gray-200 cursor-not-allowed opacity-60"
+          : isSuccess
+            ? "bg-green-500 hover:bg-green-600 scale-110"
+            : "bg-white/90 hover:bg-white hover:scale-110"
+      )}
+    >
+      {isPending ? (
+        <Loader2 className={cn(iconSize, "animate-spin text-orange-500")} />
+      ) : isSuccess ? (
+        <Check className={cn(iconSize, "text-white")} />
+      ) : (
+        <ShoppingCart
+          className={cn(
+            iconSize,
+            isOutOfStock ? "text-gray-400" : "text-orange-500"
+          )}
+        />
+      )}
+    </button>
+  );
+};
+
+// ─── ProductCard ───────────────────────────────────────────────────────────────
 
 export const ProductCard = ({
   product,
@@ -120,6 +221,13 @@ export const ProductCard = ({
               </Badge>
             </div>
           )}
+
+          {/* Quick-add button */}
+          {!isOutOfStock && (
+            <div className="absolute bottom-2 right-2 z-10 sm:opacity-0 sm:group-hover:opacity-100 sm:transition-opacity sm:duration-200">
+              <CardCartButton product={product} />
+            </div>
+          )}
         </div>
 
         {/* Content */}
@@ -187,7 +295,7 @@ export const ProductCard = ({
   );
 };
 
-// Compact variant for "Related Products", "You May Also Like", etc.
+// ─── ProductCardCompact (Related Products, You May Also Like, etc.) ───────────
 export const ProductCardCompact = ({
   product,
   className,
@@ -227,6 +335,13 @@ export const ProductCardCompact = ({
           {hasDiscount && (
             <div className="absolute left-1.5 top-1.5 bg-red-500 text-white px-1.5 py-0.5 rounded-full text-[10px] font-bold shadow-sm">
               -{discountPercentage}%
+            </div>
+          )}
+
+          {/* Quick-add button */}
+          {!(product.stock_quantity != null && product.stock_quantity <= 0) && (
+            <div className="absolute bottom-1.5 right-1.5 z-10 sm:opacity-0 sm:group-hover:opacity-100 sm:transition-opacity sm:duration-200">
+              <CardCartButton product={product} size="xs" />
             </div>
           )}
         </div>

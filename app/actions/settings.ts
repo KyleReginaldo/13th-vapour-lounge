@@ -11,8 +11,19 @@ import { requireRole } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 
+const SETTINGS_DEFAULTS = {
+  shop_name: "13th Vapour Lounge",
+  tax_rate: 0,
+  currency: "PHP",
+  allow_cod: true,
+  allow_online_payment: true,
+  low_stock_threshold: 10,
+  shipping_fee: 50,
+  free_shipping_threshold: 0,
+};
+
 /**
- * Get shop settings
+ * Get shop settings (admin only)
  */
 export const getShopSettings = withErrorHandling(
   async (): Promise<ActionResponse> => {
@@ -25,18 +36,36 @@ export const getShopSettings = withErrorHandling(
       .single();
 
     if (fetchError) {
-      // If no settings exist, return defaults
-      return success({
-        shop_name: "13th Vapour Lounge",
-        tax_rate: 0,
-        currency: "PHP",
-        allow_cod: true,
-        allow_online_payment: true,
-        low_stock_threshold: 10,
-      });
+      return success(SETTINGS_DEFAULTS);
     }
 
-    return success(data);
+    return success({ ...SETTINGS_DEFAULTS, ...data });
+  }
+);
+
+/**
+ * Get public shipping settings (no auth required)
+ */
+export const getPublicShippingSettings = withErrorHandling(
+  async (): Promise<ActionResponse> => {
+    const supabase = await createClient();
+
+    const { data } = await supabase
+      .from("shop_settings")
+      .select("key, value")
+      .in("key", ["shipping_fee", "free_shipping_threshold"]);
+
+    const map = ((data ?? []) as { key: string; value: unknown }[]).reduce<
+      Record<string, unknown>
+    >((acc, row) => {
+      acc[row.key] = row.value;
+      return acc;
+    }, {});
+
+    return success({
+      shipping_fee: (map.shipping_fee as number) ?? 50,
+      free_shipping_threshold: (map.free_shipping_threshold as number) ?? 0,
+    });
   }
 );
 

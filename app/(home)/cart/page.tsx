@@ -106,6 +106,60 @@ export default function CartPage() {
           <div className="grid lg:grid-cols-3 gap-8">
             {/* Cart Items */}
             <div className="lg:col-span-2 space-y-4">
+              {/* Mismatch / Stock Warning Banner */}
+              {(() => {
+                const outOfStockItems = cart.items.filter((item: any) => {
+                  const stock = item.product_variants
+                    ? item.product_variants.stock_quantity
+                    : item.products.stock_quantity;
+                  return stock !== null && stock === 0;
+                });
+                const insufficientStockItems = cart.items.filter(
+                  (item: any) => {
+                    const stock = item.product_variants
+                      ? item.product_variants.stock_quantity
+                      : item.products.stock_quantity;
+                    return stock !== null && stock > 0 && stock < item.quantity;
+                  }
+                );
+                if (
+                  outOfStockItems.length === 0 &&
+                  insufficientStockItems.length === 0
+                )
+                  return null;
+                return (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 flex gap-3">
+                    <span className="text-amber-500 text-lg leading-none mt-0.5">
+                      ⚠
+                    </span>
+                    <div className="text-sm text-amber-800 space-y-1">
+                      {outOfStockItems.length > 0 && (
+                        <p>
+                          <span className="font-semibold">Out of stock:</span>{" "}
+                          {outOfStockItems
+                            .map((i: any) => i.products.name)
+                            .join(", ")}{" "}
+                          — please remove before checkout.
+                        </p>
+                      )}
+                      {insufficientStockItems.length > 0 && (
+                        <p>
+                          <span className="font-semibold">Limited stock:</span>{" "}
+                          {insufficientStockItems
+                            .map((i: any) => {
+                              const stock = i.product_variants
+                                ? i.product_variants.stock_quantity
+                                : i.products.stock_quantity;
+                              return `${i.products.name} (only ${stock} left)`;
+                            })
+                            .join(", ")}{" "}
+                          — update your quantities.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
                 <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">
                   Cart Items ({cart.summary.itemCount})

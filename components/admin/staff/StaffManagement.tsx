@@ -1,6 +1,6 @@
 "use client";
 
-import { changeStaffRole, createStaffMember } from "@/app/actions/staff";
+import { createStaffMember } from "@/app/actions/staff";
 import { deactivateUser, reactivateUser } from "@/app/actions/user-management";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,13 +21,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Table,
   TableBody,
   TableCell,
@@ -41,7 +34,6 @@ import {
   Phone,
   Plus,
   Search,
-  Shield,
   UserCheck,
   Users,
   UserX,
@@ -138,22 +130,22 @@ export function StaffManagement({ initialStaff, roles }: StaffManagementProps) {
     }
   };
 
-  const handleChangeRole = async (member: StaffRecord, roleId: string) => {
-    setIsSubmitting(true);
-    try {
-      const result = await changeStaffRole(member.id, roleId);
-      if (result?.success) {
-        toast.success("Role updated");
-        router.refresh();
-      } else {
-        toast.error(result?.message ?? "Failed to update role");
-      }
-    } catch {
-      toast.error("Failed to update role");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+  // const handleChangeRole = async (member: StaffRecord, roleId: string) => {
+  //   setIsSubmitting(true);
+  //   try {
+  //     const result = await changeStaffRole(member.id, roleId);
+  //     if (result?.success) {
+  //       toast.success("Role updated");
+  //       router.refresh();
+  //     } else {
+  //       toast.error(result?.message ?? "Failed to update role");
+  //     }
+  //   } catch {
+  //     toast.error("Failed to update role");
+  //   } finally {
+  //     setIsSubmitting(false);
+  //   }
+  // };
 
   const handleAddStaff = async () => {
     setIsSubmitting(true);
@@ -175,11 +167,9 @@ export function StaffManagement({ initialStaff, roles }: StaffManagementProps) {
   };
 
   const activeCount = staff.filter((s) => s.is_active !== false).length;
-  const adminCount = staff.filter((s) => s.role?.name === "admin").length;
-
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Staff</CardTitle>
@@ -194,24 +184,16 @@ export function StaffManagement({ initialStaff, roles }: StaffManagementProps) {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Admins</CardTitle>
-            <Shield className="h-4 w-4 text-blue-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">{adminCount}</div>
-            <p className="text-xs text-muted-foreground">Full access</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Staff</CardTitle>
+            <CardTitle className="text-sm font-medium">Active</CardTitle>
             <UserCheck className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">
-              {staff.length - adminCount}
+              {activeCount}
             </div>
-            <p className="text-xs text-muted-foreground">Limited access</p>
+            <p className="text-xs text-muted-foreground">
+              {staff.length - activeCount} inactive
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -382,7 +364,7 @@ export function StaffManagement({ initialStaff, roles }: StaffManagementProps) {
                 </div>
               </div>
 
-              <div className="space-y-2 border-t pt-4">
+              {/* <div className="space-y-2 border-t pt-4">
                 <Label className="text-sm font-medium">Change Role</Label>
                 <Select
                   value={selectedMember.role_id}
@@ -399,14 +381,16 @@ export function StaffManagement({ initialStaff, roles }: StaffManagementProps) {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {roles.map((r) => (
-                      <SelectItem key={r.id} value={r.id}>
-                        {r.name.charAt(0).toUpperCase() + r.name.slice(1)}
-                      </SelectItem>
-                    ))}
+                    {roles
+                      .filter((r) => r.name !== "admin")
+                      .map((r) => (
+                        <SelectItem key={r.id} value={r.id}>
+                          {r.name.charAt(0).toUpperCase() + r.name.slice(1)}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
-              </div>
+              </div> */}
 
               <Button
                 variant="outline"
@@ -511,7 +495,7 @@ export function StaffManagement({ initialStaff, roles }: StaffManagementProps) {
                 />
               </div>
             </div>
-            <div>
+            {/* <div>
               <Label className="text-sm font-medium">Role *</Label>
               <Select
                 value={formData.role_id}
@@ -523,14 +507,16 @@ export function StaffManagement({ initialStaff, roles }: StaffManagementProps) {
                   <SelectValue placeholder="Select role" />
                 </SelectTrigger>
                 <SelectContent>
-                  {roles.map((r) => (
-                    <SelectItem key={r.id} value={r.id}>
-                      {r.name.charAt(0).toUpperCase() + r.name.slice(1)}
-                    </SelectItem>
-                  ))}
+                  {roles
+                    .filter((r) => r.name !== "admin")
+                    .map((r) => (
+                      <SelectItem key={r.id} value={r.id}>
+                        {r.name.charAt(0).toUpperCase() + r.name.slice(1)}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
-            </div>
+            </div> */}
             <div className="flex justify-end gap-2">
               <Button
                 variant="outline"

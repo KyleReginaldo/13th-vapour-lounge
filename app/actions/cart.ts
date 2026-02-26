@@ -277,26 +277,104 @@ export const getCart = withErrorHandling(async (): Promise<ActionResponse> => {
   }
 
   // Calculate cart totals
-  const taxRate = 0.12; // 12% VAT
-
   const subtotal = data.reduce((sum, item) => {
     const price = item.product_variants?.price || item.products.base_price;
     return sum + price * item.quantity;
   }, 0);
 
-  const tax = subtotal * taxRate;
-  const total = subtotal + tax;
+  const total = subtotal;
 
   return success({
     items: data,
     summary: {
       subtotal,
-      tax,
+      tax: 0,
       total,
       itemCount: data.reduce((sum, item) => sum + item.quantity, 0),
     },
   });
 });
+
+/**
+ * Merge guest cart items into authenticated user's cart
+ */
+export const mergeGuestCart = withErrorHandling(
+  async (
+    guestItems: Array<{
+      productId: string;
+      variantId?: string;
+      quantity: number;
+    }>
+  ): Promise<ActionResponse> => {
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      return error("You must be logged in", ErrorCode.UNAUTHORIZED);
+    }
+
+    for (const item of guestItems) {
+      // Check available stock
+      let availableStock = 0;
+      if (item.variantId) {
+        const { data: variant } = await supabase
+          .from("product_variants")
+          .select("stock_quantity")
+          .eq("id", item.variantId)
+          .single();
+        availableStock = variant?.stock_quantity ?? 0;
+      } else {
+        const { data: product } = await supabase
+          .from("products")
+          .select("stock_quantity")
+          .eq("id", item.productId)
+          .single();
+        if (!product) continue;
+        availableStock = product.stock_quantity ?? 0;
+      }
+
+      if (availableStock <= 0) continue;
+
+      // Check if already in DB cart
+      let existingQuery = supabase
+        .from("carts")
+        .select("id, quantity")
+        .eq("user_id", user.id)
+        .eq("product_id", item.productId);
+
+      if (item.variantId) {
+        existingQuery = existingQuery.eq("variant_id", item.variantId);
+      } else {
+        existingQuery = existingQuery.is("variant_id", null);
+      }
+
+      const { data: existing } = await existingQuery.maybeSingle();
+      const desiredQty = Math.min(
+        (existing?.quantity ?? 0) + item.quantity,
+        availableStock
+      );
+
+      if (existing) {
+        await supabase
+          .from("carts")
+          .update({ quantity: desiredQty })
+          .eq("id", existing.id);
+      } else {
+        await supabase.from("carts").insert({
+          user_id: user.id,
+          product_id: item.productId,
+          variant_id: item.variantId ?? null,
+          quantity: desiredQty,
+        });
+      }
+    }
+
+    revalidatePath("/cart");
+    return success(null, "Cart merged successfully");
+  }
+);
 
 /**
  * Clear user's cart

@@ -16,12 +16,12 @@ import {
   Star,
   Zap,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useFormStatus } from "react-dom";
-import Logo from '../../../public/logo.jpg'
-import Image from "next/image";
+import Logo from "../../../public/logo.jpg";
 function SubmitButton() {
   const { pending } = useFormStatus();
   return (
@@ -47,6 +47,28 @@ function SignInForm() {
   const error = searchParams.get("error");
   const message = searchParams.get("message");
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
+  const [email, setEmail] = useState("");
+
+  // Load remembered email on mount
+  useEffect(() => {
+    const saved = localStorage.getItem("remembered_email");
+    if (saved) {
+      setEmail(saved);
+      setRememberMe(true);
+    }
+  }, []);
+
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    const formEmail = (
+      e.currentTarget.elements.namedItem("email") as HTMLInputElement
+    )?.value;
+    if (rememberMe && formEmail) {
+      localStorage.setItem("remembered_email", formEmail);
+    } else {
+      localStorage.removeItem("remembered_email");
+    }
+  };
 
   return (
     <div className="flex-1 flex flex-col">
@@ -54,7 +76,8 @@ function SignInForm() {
       <div className="lg:hidden p-6">
         <Link href="/" className="inline-flex items-center gap-2">
           <div className="w-8 h-8 rounded-md bg-[#0A0A0A] flex items-center justify-center">
-            <Image src={Logo}
+            <Image
+              src={Logo}
               alt="13th Vapour Lounge Logo"
               className="w-8 h-8 object-contain"
             />
@@ -91,7 +114,7 @@ function SignInForm() {
               </div>
             )}
 
-            <form className="space-y-5" action={signIn}>
+            <form className="space-y-5" action={signIn} onSubmit={handleSubmit}>
               {/* Email */}
               <div className="space-y-1.5">
                 <Label
@@ -109,6 +132,8 @@ function SignInForm() {
                     autoComplete="email"
                     required
                     placeholder="you@example.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     className="h-11 pl-9 pr-4 text-[14px] rounded-xl border-[1.5px] border-[#E8E8E8] bg-white placeholder:text-[#CDCDCD] focus-visible:border-[#0A0A0A] focus-visible:ring-0 focus-visible:shadow-[0_0_0_3px_rgba(10,10,10,0.06)] transition-all"
                   />
                 </div>
@@ -155,6 +180,43 @@ function SignInForm() {
                 </div>
               </div>
 
+              {/* Remember me */}
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  role="checkbox"
+                  aria-checked={rememberMe}
+                  onClick={() => setRememberMe(!rememberMe)}
+                  className={`w-4.5 h-4.5 shrink-0 rounded-[5px] border-[1.5px] transition-all flex items-center justify-center ${
+                    rememberMe
+                      ? "bg-[#0A0A0A] border-[#0A0A0A]"
+                      : "bg-white border-[#D0D0D0] hover:border-[#0A0A0A]"
+                  }`}
+                >
+                  {rememberMe && (
+                    <svg
+                      className="w-2.5 h-2.5 text-white"
+                      fill="none"
+                      viewBox="0 0 10 8"
+                    >
+                      <path
+                        d="M1 4l2.5 2.5L9 1"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  )}
+                </button>
+                <span
+                  className="text-[13px] text-[#6B6B6B] cursor-pointer select-none"
+                  onClick={() => setRememberMe(!rememberMe)}
+                >
+                  Remember me
+                </span>
+              </div>
+
               {/* Submit */}
               <SubmitButton />
             </form>
@@ -181,8 +243,11 @@ function SignInForm() {
             </Link>
           </div>
 
-          <p className="mt-5 text-center text-[11px] text-[#C0C0C0]">
-            Must be 18+ to purchase vape products
+          <p className="mt-5 text-center text-[11px]">
+            <span className="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-200 text-amber-800 font-semibold px-3 py-1.5 rounded-full">
+              <ShieldCheck className="h-3.5 w-3.5 text-amber-600" />
+              Must be 18+ to purchase vape products
+            </span>
           </p>
         </div>
       </div>
@@ -216,7 +281,8 @@ export default function SignInPage() {
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2 group">
             <div className="w-8 h-8 rounded-md bg-[#0A0A0A] flex items-center justify-center">
-              <Image src={Logo}
+              <Image
+                src={Logo}
                 alt="13th Vapour Lounge Logo"
                 className="w-8 h-8 object-contain"
               />

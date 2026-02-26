@@ -10,6 +10,7 @@ import {
 import { logAudit } from "@/lib/auth/audit";
 import { requireRole } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import {
   generateSecureFileName,
   validateDocumentUpload,
@@ -34,6 +35,7 @@ export const submitAgeVerification = withErrorHandling(
     formData: FormData
   ): Promise<ActionResponse<{ verificationId: string }>> => {
     const supabase = await createClient();
+    const service = createServiceClient();
 
     // Get current user
     const {
@@ -44,7 +46,7 @@ export const submitAgeVerification = withErrorHandling(
     }
 
     // Check if already verified
-    const { data: existingUser } = await supabase
+    const { data: existingUser } = await service
       .from("users")
       .select("is_verified")
       .eq("id", user.id)
@@ -81,9 +83,9 @@ export const submitAgeVerification = withErrorHandling(
     // Generate secure filename
     const fileName = generateSecureFileName(file.name, user.id);
 
-    // Upload to Supabase Storage
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from("id-verifications")
+    // Upload to Supabase Storage (service client bypasses RLS)
+    const { error: uploadError } = await service.storage
+      .from("files")
       .upload(fileName, file, {
         cacheControl: "3600",
         upsert: false,
@@ -92,22 +94,22 @@ export const submitAgeVerification = withErrorHandling(
     if (uploadError) {
       console.error("Upload error:", uploadError);
       return error(
-        "Failed to upload document. Please try again.",
+        `Failed to upload document: ${uploadError.message}`,
         ErrorCode.SERVER_ERROR
       );
     }
 
-    // Get private URL (since bucket is private)
-    const { data: urlData } = supabase.storage
-      .from("id-verifications")
+    // Get URL
+    const { data: urlData } = service.storage
+      .from("files")
       .getPublicUrl(fileName);
 
     // Get user's IP and user agent
     const ipAddress = ""; // Would get from headers in production
     const userAgent = ""; // Would get from headers in production
 
-    // Create verification record
-    const { data: verification, error: dbError } = await supabase
+    // Create verification record (service client bypasses RLS)
+    const { data: verification, error: dbError } = await service
       .from("age_verifications")
       .insert({
         user_id: user.id,
@@ -122,9 +124,10 @@ export const submitAgeVerification = withErrorHandling(
 
     if (dbError) {
       // Clean up uploaded file
-      await supabase.storage.from("id-verifications").remove([fileName]);
+      await service.storage.from("files").remove([fileName]);
+      console.error("DB insert error:", dbError);
       return error(
-        "Failed to create verification record",
+        `Failed to save verification: ${dbError.message}`,
         ErrorCode.SERVER_ERROR
       );
     }
@@ -297,7 +300,7 @@ export const getMyVerificationStatus = withErrorHandling(
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     return success(data);
   }

@@ -1,6 +1,7 @@
 "use client";
 
 import { getBrands } from "@/app/actions/categories-brands";
+import { createProductVariant } from "@/app/actions/product-variants";
 import {
   createProduct,
   deleteProduct,
@@ -88,9 +89,13 @@ type Product = Database["public"]["Tables"]["products"]["Row"] & {
 
 interface ProductsManagementProps {
   products: Product[];
+  isAdmin?: boolean;
 }
 
-export function ProductsManagement({ products }: ProductsManagementProps) {
+export function ProductsManagement({
+  products,
+  isAdmin = false,
+}: ProductsManagementProps) {
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState("");
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -106,6 +111,14 @@ export function ProductsManagement({ products }: ProductsManagementProps) {
   const [slug, setSlug] = useState("");
   const [qrCode, setQrCode] = useState("");
   const [brands, setBrands] = useState<Array<{ id: string; name: string }>>([]);
+
+  // Spec / attributes state
+  const [vapeType, setVapeType] = useState("");
+  const [specFlavor, setSpecFlavor] = useState("");
+  const [specVolume, setSpecVolume] = useState("");
+  const [specNicotine, setSpecNicotine] = useState("");
+  const [specPgvg, setSpecPgvg] = useState("");
+  const [specCoil, setSpecCoil] = useState("");
 
   // Fetch brands on mount
   useEffect(() => {
@@ -177,9 +190,21 @@ export function ProductsManagement({ products }: ProductsManagementProps) {
     setIsSubmitting(true);
 
     const formData = new FormData(e.currentTarget);
+    const sku = formData.get("sku") as string;
+
+    // Build vape spec attributes
+    const attributes: Record<string, string> = {};
+    if (vapeType) attributes.vape_type = vapeType;
+    if (specFlavor.trim()) attributes.flavor_profile = specFlavor.trim();
+    if (specVolume.trim()) attributes.volume_capacity = specVolume.trim();
+    if (specNicotine.trim()) attributes.nicotine_strength = specNicotine.trim();
+    if (specPgvg) attributes.pg_vg_ratio = specPgvg;
+    if (specCoil.trim()) attributes.coil_compatibility = specCoil.trim();
+    const hasAttributes = Object.keys(attributes).length > 0;
+
     const data = {
       name: formData.get("name") as string,
-      sku: formData.get("sku") as string,
+      sku,
       description: (formData.get("description") as string) || undefined,
       category: formData.get("category") || "General",
       brand_id: (formData.get("brand_id") as string) || null,
@@ -199,8 +224,9 @@ export function ProductsManagement({ products }: ProductsManagementProps) {
         ? parseInt(formData.get("critical_stock_threshold") as string)
         : 5,
       barcode: (formData.get("barcode") as string) || undefined,
-      qr_code: qrCode || undefined, // Use auto-generated QR code
-      product_type: (formData.get("product_type") as string) || undefined,
+      qr_code: qrCode || undefined,
+      product_type: hasAttributes ? "variant" : "simple",
+      has_variants: hasAttributes,
       track_inventory: formData.get("track_inventory") === "on",
       is_published: formData.get("is_published") === "on",
       is_featured: formData.get("is_featured") === "on",
@@ -208,19 +234,41 @@ export function ProductsManagement({ products }: ProductsManagementProps) {
 
     const result = await createProduct(data as any);
 
-    setIsSubmitting(false);
-
-    if (result.success) {
-      toast.success("Product created successfully");
-      setShowAddDialog(false);
-      setProductImages([]);
-      setProductName("");
-      setSlug("");
-      setQrCode("");
-      router.refresh();
-    } else {
+    if (!result.success) {
+      setIsSubmitting(false);
       toast.error(result.message || "Failed to create product");
+      return;
     }
+
+    // If spec attributes exist, auto-create the default variant
+    if (hasAttributes && result.data?.id) {
+      const variantResult = await createProductVariant({
+        productId: result.data.id,
+        sku: `${sku}-001`,
+        attributes,
+        price: parseFloat(formData.get("price") as string),
+        stock_quantity: parseInt(formData.get("stock") as string),
+        is_active: true,
+      });
+      if (!variantResult.success) {
+        toast.warning("Product created but failed to save specifications.");
+      }
+    }
+
+    setIsSubmitting(false);
+    toast.success("Product created successfully");
+    setShowAddDialog(false);
+    setProductImages([]);
+    setProductName("");
+    setSlug("");
+    setQrCode("");
+    setVapeType("");
+    setSpecFlavor("");
+    setSpecVolume("");
+    setSpecNicotine("");
+    setSpecPgvg("");
+    setSpecCoil("");
+    router.refresh();
   };
 
   const handleEditProduct = (product: Product) => {
@@ -298,13 +346,29 @@ export function ProductsManagement({ products }: ProductsManagementProps) {
     const criticalThreshold = product.critical_stock_threshold || 5;
 
     if (stock === 0) {
-      return { status: "out", label: "Out of Stock", color: "destructive" };
+      return {
+        status: "out",
+        label: "Out of Stock",
+        cls: "bg-red-100 text-red-700 border border-red-200",
+      };
     } else if (stock <= criticalThreshold) {
-      return { status: "critical", label: "Critical", color: "destructive" };
+      return {
+        status: "critical",
+        label: "Critical",
+        cls: "bg-red-100 text-red-700 border border-red-200",
+      };
     } else if (stock <= lowThreshold) {
-      return { status: "low", label: "Low Stock", color: "secondary" };
+      return {
+        status: "low",
+        label: "Low Stock",
+        cls: "bg-yellow-100 text-yellow-700 border border-yellow-200",
+      };
     }
-    return { status: "good", label: "In Stock", color: "default" };
+    return {
+      status: "good",
+      label: "In Stock",
+      cls: "bg-green-100 text-green-700 border border-green-200",
+    };
   };
 
   const stats = {
@@ -348,29 +412,28 @@ export function ProductsManagement({ products }: ProductsManagementProps) {
                 {/* Basic Information */}
                 <div className="space-y-4">
                   <h4 className="font-semibold text-sm">Basic Information</h4>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="name">Product Name *</Label>
-                      <Input
-                        id="name"
-                        name="name"
-                        placeholder="Enter product name"
-                        required
-                        value={productName}
-                        onChange={handleNameChange}
-                        disabled={isSubmitting}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="sku">SKU *</Label>
-                      <Input
-                        id="sku"
-                        name="sku"
-                        placeholder="e.g., VAPE-001"
-                        required
-                        disabled={isSubmitting}
-                      />
-                    </div>
+                  <input
+                    type="hidden"
+                    name="sku"
+                    value={
+                      slug ||
+                      productName
+                        .toLowerCase()
+                        .replace(/[^a-z0-9]+/g, "-")
+                        .replace(/(^-|-$)/g, "")
+                    }
+                  />
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Product Name *</Label>
+                    <Input
+                      id="name"
+                      name="name"
+                      placeholder="Enter product name"
+                      required
+                      value={productName}
+                      onChange={handleNameChange}
+                      disabled={isSubmitting}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="slug">Slug (Auto-generated)</Label>
@@ -433,19 +496,7 @@ export function ProductsManagement({ products }: ProductsManagementProps) {
                         ))}
                       </select>
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="product_type">Product Type</Label>
-                      <select
-                        id="product_type"
-                        name="product_type"
-                        disabled={isSubmitting}
-                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        <option value="">Select type</option>
-                        <option value="simple">Simple Product</option>
-                        <option value="variant">Product with Variants</option>
-                      </select>
-                    </div>
+
                     <div className="flex items-center gap-4 pt-6">
                       <label className="flex items-center gap-2">
                         <input
@@ -467,6 +518,112 @@ export function ProductsManagement({ products }: ProductsManagementProps) {
                         <span className="text-sm">Featured</span>
                       </label>
                     </div>
+                  </div>
+                </div>
+
+                {/* Product Specifications */}
+                <div className="space-y-4">
+                  <h4 className="font-semibold text-sm">
+                    Product Specifications
+                  </h4>
+                  <p className="text-xs text-muted-foreground">
+                    These appear in the Specifications table on the product
+                    page.
+                  </p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Product Type</Label>
+                      <select
+                        value={vapeType}
+                        onChange={(e) => setVapeType(e.target.value)}
+                        disabled={isSubmitting}
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <option value="">Select vape type (optional)</option>
+                        <option value="E-Liquid">E-Liquid</option>
+                        <option value="E-Liquid (Salt Nic)">
+                          E-Liquid (Salt Nic)
+                        </option>
+                        <option value="Disposable Vape">Disposable Vape</option>
+                        <option value="Pod System">Pod System</option>
+                        <option value="Coil">Coil</option>
+                      </select>
+                    </div>
+
+                    {(vapeType === "E-Liquid" ||
+                      vapeType === "E-Liquid (Salt Nic)" ||
+                      vapeType === "Disposable Vape") && (
+                      <div className="space-y-2">
+                        <Label>Flavor</Label>
+                        <Input
+                          value={specFlavor}
+                          onChange={(e) => setSpecFlavor(e.target.value)}
+                          placeholder="e.g., Watermelon Lime"
+                          disabled={isSubmitting}
+                        />
+                      </div>
+                    )}
+
+                    {(vapeType === "E-Liquid" ||
+                      vapeType === "E-Liquid (Salt Nic)" ||
+                      vapeType === "Disposable Vape") && (
+                      <div className="space-y-2">
+                        <Label>Volume</Label>
+                        <Input
+                          value={specVolume}
+                          onChange={(e) => setSpecVolume(e.target.value)}
+                          placeholder="e.g., 30ml"
+                          disabled={isSubmitting}
+                        />
+                      </div>
+                    )}
+
+                    {(vapeType === "E-Liquid" ||
+                      vapeType === "E-Liquid (Salt Nic)" ||
+                      vapeType === "Disposable Vape") && (
+                      <div className="space-y-2">
+                        <Label>Nicotine Strength</Label>
+                        <Input
+                          value={specNicotine}
+                          onChange={(e) => setSpecNicotine(e.target.value)}
+                          placeholder="e.g., 30mg or 30mg / 50mg"
+                          disabled={isSubmitting}
+                        />
+                      </div>
+                    )}
+
+                    {(vapeType === "E-Liquid" ||
+                      vapeType === "E-Liquid (Salt Nic)") && (
+                      <div className="space-y-2">
+                        <Label>PG/VG Ratio</Label>
+                        <select
+                          value={specPgvg}
+                          onChange={(e) => setSpecPgvg(e.target.value)}
+                          disabled={isSubmitting}
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <option value="">Select ratio (optional)</option>
+                          <option value="70/30">
+                            70/30 — High VG (sub-ohm)
+                          </option>
+                          <option value="50/50">
+                            50/50 — Balanced (pod systems)
+                          </option>
+                        </select>
+                      </div>
+                    )}
+
+                    {(vapeType === "Pod System" || vapeType === "Coil") && (
+                      <div className="space-y-2">
+                        <Label>Coil Compatibility</Label>
+                        <Input
+                          value={specCoil}
+                          onChange={(e) => setSpecCoil(e.target.value)}
+                          placeholder="e.g., pod/cartridge"
+                          disabled={isSubmitting}
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -758,7 +915,6 @@ export function ProductsManagement({ products }: ProductsManagementProps) {
               <TableRow>
                 <TableHead className="w-20">Image</TableHead>
                 <TableHead>Product</TableHead>
-                <TableHead>SKU</TableHead>
                 <TableHead>Brand</TableHead>
                 <TableHead>Category</TableHead>
                 <TableHead>Price</TableHead>
@@ -799,7 +955,6 @@ export function ProductsManagement({ products }: ProductsManagementProps) {
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell className="font-mono">{product.sku}</TableCell>
                     <TableCell>{product.brand?.name || "-"}</TableCell>
                     <TableCell>{product.category?.name || "-"}</TableCell>
                     <TableCell>{formatCurrency(product.base_price)}</TableCell>
@@ -814,14 +969,7 @@ export function ProductsManagement({ products }: ProductsManagementProps) {
                       )}
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        variant={
-                          stockStatus.color as
-                            | "default"
-                            | "destructive"
-                            | "secondary"
-                        }
-                      >
+                      <Badge className={stockStatus.cls}>
                         {stockStatus.label}
                       </Badge>
                     </TableCell>
@@ -846,14 +994,18 @@ export function ProductsManagement({ products }: ProductsManagementProps) {
                             <Edit className="mr-2 h-4 w-4" />
                             Edit Product
                           </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            className="text-destructive"
-                            onClick={() => handleOpenDeleteDialog(product)}
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Delete Product
-                          </DropdownMenuItem>
+                          {isAdmin && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-destructive"
+                                onClick={() => handleOpenDeleteDialog(product)}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete Product
+                              </DropdownMenuItem>
+                            </>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>

@@ -1,4 +1,5 @@
 import { UserManagement } from "@/components/admin/users/UserManagement";
+import { requireRole } from "@/lib/auth/roles";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -6,7 +7,8 @@ export const metadata: Metadata = {
   description: "Manage user accounts, roles, and permissions",
 };
 
-export default function UsersPage() {
+export default async function UsersPage() {
+  await requireRole(["admin"]);
   return (
     <div className="container mx-auto py-8">
       <div className="mb-8">

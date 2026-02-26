@@ -1,5 +1,6 @@
 "use client";
 
+import { LegalAcceptModal } from "@/components/shared/LegalModal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,14 +18,14 @@ import {
   Phone,
   ShieldCheck,
   User,
-  Zap,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
-import Logo from '../../../public/logo.jpg'
-import Image from "next/image";
+import Logo from "../../../public/logo.jpg";
+
 function SubmitButton() {
   const { pending } = useFormStatus();
   return (
@@ -45,20 +46,41 @@ function SubmitButton() {
   );
 }
 
+function checkPasswordStrength(password: string) {
+  return {
+    minLength: password.length >= 8,
+    hasUppercase: /[A-Z]/.test(password),
+    hasLowercase: /[a-z]/.test(password),
+    hasSpecial: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password),
+  };
+}
+
 function SignUpForm() {
   const searchParams = useSearchParams();
   const error = searchParams.get("error");
   const message = searchParams.get("message");
 
-  const maxDate = new Date();
-  maxDate.setFullYear(maxDate.getFullYear() - 18);
-  const maxDateString = maxDate.toISOString().split("T")[0];
-
   const [showPassword, setShowPassword] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
   const [stepErrors, setStepErrors] = useState<string | null>(null);
+  const [passwordValue, setPasswordValue] = useState("");
+  const [contactValue, setContactValue] = useState("");
 
-  // Accumulated data from each step stored in state so it survives step transitions
+  const [termsScrolled, setTermsScrolled] = useState(false);
+  const [privacyScrolled, setPrivacyScrolled] = useState(false);
+  const termsCheckRef = useRef<HTMLInputElement>(null);
+  const privacyCheckRef = useRef<HTMLInputElement>(null);
+
+  function handleTermsAccepted() {
+    setTermsScrolled(true);
+    if (termsCheckRef.current) termsCheckRef.current.checked = true;
+  }
+
+  function handlePrivacyAccepted() {
+    setPrivacyScrolled(true);
+    if (privacyCheckRef.current) privacyCheckRef.current.checked = true;
+  }
+
   const [stepOneData, setStepOneData] = useState({
     firstName: "",
     lastName: "",
@@ -81,14 +103,36 @@ function SignUpForm() {
     (formRef.current?.elements.namedItem(name) as HTMLInputElement)?.value ??
     "";
 
+  const handleContactChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const digitsOnly = e.target.value.replace(/\D/g, "");
+    setContactValue(digitsOnly.slice(0, 10));
+  };
+
   const handleContinueStep1 = () => {
     const firstName = readField("firstName");
     const lastName = readField("lastName");
-    const contactNumber = readField("contactNumber");
     const dateOfBirth = readField("dateOfBirth");
 
-    if (!firstName || !lastName || !contactNumber || !dateOfBirth) {
+    if (!firstName || !lastName || !contactValue || !dateOfBirth) {
       setStepErrors("Please fill in all required fields.");
+      return;
+    }
+    if (!contactValue.startsWith("9")) {
+      setStepErrors("Contact number must start with 9.");
+      return;
+    }
+    if (contactValue.length !== 10) {
+      setStepErrors("Contact number must be exactly 10 digits after +63.");
+      return;
+    }
+    const dob = new Date(dateOfBirth);
+    const today = new Date();
+    const age = today.getFullYear() - dob.getFullYear();
+    const hasHadBirthdayThisYear =
+      today.getMonth() > dob.getMonth() ||
+      (today.getMonth() === dob.getMonth() && today.getDate() >= dob.getDate());
+    if (age - (hasHadBirthdayThisYear ? 0 : 1) < 18) {
+      setStepErrors("You must be at least 18 years old to register.");
       return;
     }
     setStepErrors(null);
@@ -97,36 +141,58 @@ function SignUpForm() {
       lastName,
       middleName: readField("middleName"),
       suffix: readField("suffix"),
-      contactNumber,
+      contactNumber: "+63" + contactValue,
       dateOfBirth,
     });
     setCurrentStep(2);
   };
 
   const handleContinueStep2 = () => {
-    const email = readField("email");
+    const email = readField("email").toLowerCase().trim();
     const password = readField("password");
 
     if (!email || !password) {
       setStepErrors("Please fill in all required fields.");
       return;
     }
-    if (password.length < 6) {
-      setStepErrors("Password must be at least 6 characters.");
+    if (!/^[^\s@]+@(gmail|yahoo)\.com$/.test(email)) {
+      setStepErrors(
+        "Only @gmail.com and @yahoo.com email addresses are accepted."
+      );
       return;
     }
+    const strength = checkPasswordStrength(password);
+    if (!strength.minLength) {
+      setStepErrors("Password must be at least 8 characters.");
+      return;
+    }
+    if (!strength.hasUppercase) {
+      setStepErrors("Password must include at least one uppercase letter.");
+      return;
+    }
+    if (!strength.hasLowercase) {
+      setStepErrors("Password must include at least one lowercase letter.");
+      return;
+    }
+    if (!strength.hasSpecial) {
+      setStepErrors("Password must include at least one special character.");
+      return;
+    }
+
     setStepErrors(null);
     setStepTwoData({ email, password });
     setCurrentStep(3);
   };
 
+  const pwStrength = checkPasswordStrength(passwordValue);
+
   return (
     <div className="flex-1 flex flex-col bg-[#FAFAFA]">
-      {/* Mobile logo */}
       <div className="lg:hidden p-6">
         <Link href="/" className="inline-flex items-center gap-2">
           <div className="w-8 h-8 rounded-md bg-[#0A0A0A] flex items-center justify-center">
-            <Image src={Logo}
+            <Image
+              src={Logo}
               alt="13th Vapour Lounge Logo"
               className="w-8 h-8 object-contain"
             />
@@ -140,7 +206,6 @@ function SignUpForm() {
       <div className="flex-1 flex items-center justify-center p-6 sm:p-8">
         <div className="w-full max-w-[440px]">
           <div className="bg-white rounded-2xl border border-[#EBEBEB] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-8 sm:p-10">
-            {/* Header */}
             <div className="mb-7">
               <div className="flex items-center justify-between mb-1.5">
                 <h1 className="text-2xl font-bold text-[#0F0F0F] tracking-tight">
@@ -157,21 +222,16 @@ function SignUpForm() {
                     ? "Set up your credentials"
                     : "Almost there — review and confirm"}
               </p>
-
-              {/* Progress bar */}
               <div className="flex gap-1.5">
                 {[1, 2, 3].map((step) => (
                   <div
                     key={step}
-                    className={`h-1 flex-1 rounded-full transition-all duration-300 ${
-                      step <= currentStep ? "bg-[#0A0A0A]" : "bg-[#EBEBEB]"
-                    }`}
+                    className={`h-1 flex-1 rounded-full transition-all duration-300 ${step <= currentStep ? "bg-[#0A0A0A]" : "bg-[#EBEBEB]"}`}
                   />
                 ))}
               </div>
             </div>
 
-            {/* URL-level error/success */}
             {error && (
               <div className="mb-5 flex items-start gap-2.5 rounded-xl bg-red-50 border border-red-100 px-4 py-3">
                 <AlertCircle className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
@@ -186,7 +246,6 @@ function SignUpForm() {
             )}
 
             <form ref={formRef} className="space-y-4" action={signUp}>
-              {/* Hidden fields carrying step 1 & 2 data when on step 3 */}
               {currentStep === 3 && (
                 <>
                   <input
@@ -314,17 +373,26 @@ function SignUpForm() {
                     >
                       Contact number <span className="text-red-400">*</span>
                     </Label>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#ADADAD]" />
-                      <Input
+                    <div className="flex items-center rounded-xl border-[1.5px] border-[#E8E8E8] bg-white overflow-hidden focus-within:border-[#0A0A0A] focus-within:shadow-[0_0_0_3px_rgba(10,10,10,0.06)] transition-all">
+                      <span className="pl-3 pr-2 text-[14px] text-[#3D3D3D] font-medium shrink-0 border-r border-[#E8E8E8] py-2.5">
+                        <Phone className="inline h-3.5 w-3.5 text-[#ADADAD] mr-1" />
+                        +63
+                      </span>
+                      <input
                         id="contactNumber"
-                        name="contactNumber"
+                        name="contactNumberDisplay"
                         type="tel"
-                        placeholder="+63 912 345 6789"
-                        defaultValue={stepOneData.contactNumber}
-                        className={`${inputCls} pl-9`}
+                        inputMode="numeric"
+                        placeholder="9XXXXXXXXX"
+                        value={contactValue}
+                        onChange={handleContactChange}
+                        maxLength={10}
+                        className="flex-1 h-11 px-3 text-[14px] bg-transparent outline-none placeholder:text-[#CDCDCD]"
                       />
                     </div>
+                    <p className="text-[11px] text-[#ADADAD]">
+                      Must start with 9 — max 10 digits (e.g., 9171234567)
+                    </p>
                   </div>
 
                   <div className="space-y-1.5">
@@ -335,12 +403,11 @@ function SignUpForm() {
                       Date of birth <span className="text-red-400">*</span>
                     </Label>
                     <div className="relative">
-                      <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#ADADAD]" />
+                      <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#ADADAD] pointer-events-none" />
                       <Input
                         id="dateOfBirth"
                         name="dateOfBirth"
                         type="date"
-                        max={maxDateString}
                         defaultValue={stepOneData.dateOfBirth}
                         className={`${inputCls} pl-9`}
                       />
@@ -369,11 +436,15 @@ function SignUpForm() {
                         name="email"
                         type="email"
                         autoComplete="email"
-                        placeholder="you@example.com"
+                        placeholder="you@gmail.com"
                         defaultValue={stepTwoData.email}
                         className={`${inputCls} pl-9`}
+                        style={{ textTransform: "lowercase" }}
                       />
                     </div>
+                    <p className="text-[11px] text-[#ADADAD]">
+                      Only @gmail.com and @yahoo.com are accepted
+                    </p>
                   </div>
 
                   <div className="space-y-1.5">
@@ -390,9 +461,10 @@ function SignUpForm() {
                         name="password"
                         type={showPassword ? "text" : "password"}
                         autoComplete="new-password"
-                        minLength={6}
-                        placeholder="At least 6 characters"
-                        defaultValue={stepTwoData.password}
+                        minLength={8}
+                        placeholder="Min 8 chars, uppercase, lowercase, special"
+                        value={passwordValue}
+                        onChange={(e) => setPasswordValue(e.target.value)}
                         className={`${inputCls} pl-9 pr-10`}
                       />
                       <button
@@ -407,9 +479,58 @@ function SignUpForm() {
                         )}
                       </button>
                     </div>
-                    <p className="text-[11px] text-[#ADADAD]">
-                      Minimum 6 characters
-                    </p>
+                    {passwordValue.length > 0 && (
+                      <div className="grid grid-cols-2 gap-1 pt-1">
+                        {[
+                          {
+                            check: pwStrength.minLength,
+                            label: "8+ characters",
+                          },
+                          {
+                            check: pwStrength.hasUppercase,
+                            label: "Uppercase letter",
+                          },
+                          {
+                            check: pwStrength.hasLowercase,
+                            label: "Lowercase letter",
+                          },
+                          {
+                            check: pwStrength.hasSpecial,
+                            label: "Special character",
+                          },
+                        ].map(({ check, label }) => (
+                          <div
+                            key={label}
+                            className="flex items-center gap-1.5"
+                          >
+                            <div
+                              className={`w-3 h-3 rounded-full flex items-center justify-center shrink-0 ${check ? "bg-green-500" : "bg-[#E8E8E8]"}`}
+                            >
+                              {check && (
+                                <svg
+                                  className="w-2 h-2 text-white"
+                                  fill="none"
+                                  viewBox="0 0 10 8"
+                                >
+                                  <path
+                                    stroke="currentColor"
+                                    strokeWidth="1.5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    d="M1 4l2.5 2.5L9 1"
+                                  />
+                                </svg>
+                              )}
+                            </div>
+                            <span
+                              className={`text-[11px] ${check ? "text-green-600" : "text-[#ADADAD]"}`}
+                            >
+                              {label}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -417,7 +538,6 @@ function SignUpForm() {
               {/* Step 3: Confirm */}
               {currentStep === 3 && (
                 <div className="space-y-5">
-                  {/* Summary card */}
                   <div className="rounded-xl border border-[#EBEBEB] bg-[#FAFAFA] divide-y divide-[#EBEBEB] overflow-hidden text-[13px]">
                     <div className="px-4 py-2.5 flex gap-2">
                       <span className="text-[#ADADAD] w-28 shrink-0">Name</span>
@@ -452,7 +572,7 @@ function SignUpForm() {
                     </div>
                   </div>
 
-                  <div className="space-y-3.5">
+                  <div className="space-y-4">
                     <label className="flex items-start gap-3 cursor-pointer">
                       <input
                         type="checkbox"
@@ -468,35 +588,145 @@ function SignUpForm() {
                       </span>
                     </label>
 
-                    <label className="flex items-start gap-3 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        name="termsConfirm"
-                        required
-                        className="mt-0.5 h-4 w-4 rounded border-[#E0E0E0] accent-[#0A0A0A]"
+                    <div className="space-y-2">
+                      <p className="text-[12px] text-[#ADADAD] mb-1">
+                        Please read and accept the Terms of Service:
+                      </p>
+                      <LegalAcceptModal
+                        type="terms"
+                        accepted={termsScrolled}
+                        onAccepted={handleTermsAccepted}
+                        trigger={
+                          <button
+                            type="button"
+                            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border-[1.5px] text-[13px] transition-colors ${
+                              termsScrolled
+                                ? "border-green-500 bg-green-50 text-green-700"
+                                : "border-[#E8E8E8] bg-[#FAFAFA] text-[#6A6A6A] hover:border-[#0A0A0A]"
+                            }`}
+                          >
+                            <span className="flex items-center gap-2">
+                              {termsScrolled ? (
+                                <span className="text-green-500">✓</span>
+                              ) : (
+                                <span>📄</span>
+                              )}
+                              Terms of Service
+                            </span>
+                            <span className="text-[11px] text-[#ADADAD]">
+                              {termsScrolled ? "Accepted" : "Click to read →"}
+                            </span>
+                          </button>
+                        }
                       />
-                      <span className="text-[13px] text-[#6A6A6A] leading-relaxed">
-                        I agree to the{" "}
-                        <Link
-                          href="/terms"
-                          className="font-medium text-[#0A0A0A] underline underline-offset-2"
-                        >
-                          Terms of Service
-                        </Link>{" "}
-                        and{" "}
-                        <Link
-                          href="/privacy"
-                          className="font-medium text-[#0A0A0A] underline underline-offset-2"
-                        >
-                          Privacy Policy
-                        </Link>
-                      </span>
-                    </label>
+                      <label
+                        className={`flex items-start gap-3 ${
+                          termsScrolled
+                            ? "cursor-pointer"
+                            : "opacity-50 cursor-not-allowed"
+                        }`}
+                      >
+                        <input
+                          ref={termsCheckRef}
+                          type="checkbox"
+                          name="termsConfirm"
+                          required
+                          disabled={!termsScrolled}
+                          defaultChecked={false}
+                          className="mt-0.5 h-4 w-4 rounded border-[#E0E0E0] accent-[#0A0A0A] disabled:cursor-not-allowed"
+                        />
+                        <span className="text-[13px] text-[#6A6A6A] leading-relaxed">
+                          I agree to the{" "}
+                          <LegalAcceptModal
+                            type="terms"
+                            accepted={termsScrolled}
+                            onAccepted={handleTermsAccepted}
+                            trigger={
+                              <span className="font-medium text-[#0A0A0A] underline underline-offset-2 cursor-pointer">
+                                Terms of Service
+                              </span>
+                            }
+                          />
+                          {!termsScrolled && (
+                            <span className="ml-1 text-[11px] text-amber-600">
+                              (read the document to enable)
+                            </span>
+                          )}
+                        </span>
+                      </label>
+                    </div>
+
+                    <div className="space-y-2">
+                      <p className="text-[12px] text-[#ADADAD] mb-1">
+                        Please read and accept the Privacy Policy:
+                      </p>
+                      <LegalAcceptModal
+                        type="privacy"
+                        accepted={privacyScrolled}
+                        onAccepted={handlePrivacyAccepted}
+                        trigger={
+                          <button
+                            type="button"
+                            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border-[1.5px] text-[13px] transition-colors ${
+                              privacyScrolled
+                                ? "border-green-500 bg-green-50 text-green-700"
+                                : "border-[#E8E8E8] bg-[#FAFAFA] text-[#6A6A6A] hover:border-[#0A0A0A]"
+                            }`}
+                          >
+                            <span className="flex items-center gap-2">
+                              {privacyScrolled ? (
+                                <span className="text-green-500">✓</span>
+                              ) : (
+                                <span>🔒</span>
+                              )}
+                              Privacy Policy
+                            </span>
+                            <span className="text-[11px] text-[#ADADAD]">
+                              {privacyScrolled ? "Accepted" : "Click to read →"}
+                            </span>
+                          </button>
+                        }
+                      />
+                      <label
+                        className={`flex items-start gap-3 ${
+                          privacyScrolled
+                            ? "cursor-pointer"
+                            : "opacity-50 cursor-not-allowed"
+                        }`}
+                      >
+                        <input
+                          ref={privacyCheckRef}
+                          type="checkbox"
+                          name="privacyConfirm"
+                          required
+                          disabled={!privacyScrolled}
+                          defaultChecked={false}
+                          className="mt-0.5 h-4 w-4 rounded border-[#E0E0E0] accent-[#0A0A0A] disabled:cursor-not-allowed"
+                        />
+                        <span className="text-[13px] text-[#6A6A6A] leading-relaxed">
+                          I agree to the{" "}
+                          <LegalAcceptModal
+                            type="privacy"
+                            accepted={privacyScrolled}
+                            onAccepted={handlePrivacyAccepted}
+                            trigger={
+                              <span className="font-medium text-[#0A0A0A] underline underline-offset-2 cursor-pointer">
+                                Privacy Policy
+                              </span>
+                            }
+                          />
+                          {!privacyScrolled && (
+                            <span className="ml-1 text-[11px] text-amber-600">
+                              (read the document to enable)
+                            </span>
+                          )}
+                        </span>
+                      </label>
+                    </div>
                   </div>
                 </div>
               )}
 
-              {/* Step validation error */}
               {stepErrors && (
                 <div className="flex items-center gap-2 rounded-lg bg-red-50 border border-red-100 px-3 py-2.5">
                   <AlertCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
@@ -504,7 +734,6 @@ function SignUpForm() {
                 </div>
               )}
 
-              {/* Navigation */}
               <div className="flex gap-2.5 pt-2">
                 {currentStep > 1 && (
                   <Button
@@ -519,32 +748,28 @@ function SignUpForm() {
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
                 )}
-
                 {currentStep === 1 && (
                   <Button
                     type="button"
                     onClick={handleContinueStep1}
                     className="flex-1 h-11 text-[14px] font-semibold bg-[#0A0A0A] hover:bg-[#1A1A1A] text-white rounded-xl border-0 shadow-[0_1px_2px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.06)] hover:-translate-y-px hover:shadow-[0_4px_16px_rgba(0,0,0,0.2)] active:translate-y-0 transition-all duration-150"
                   >
-                    Continue →
+                    Continue <span aria-hidden="true">&rarr;</span>
                   </Button>
                 )}
-
                 {currentStep === 2 && (
                   <Button
                     type="button"
                     onClick={handleContinueStep2}
                     className="flex-1 h-11 text-[14px] font-semibold bg-[#0A0A0A] hover:bg-[#1A1A1A] text-white rounded-xl border-0 shadow-[0_1px_2px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.06)] hover:-translate-y-px hover:shadow-[0_4px_16px_rgba(0,0,0,0.2)] active:translate-y-0 transition-all duration-150"
                   >
-                    Continue →
+                    Continue <span aria-hidden="true">&rarr;</span>
                   </Button>
                 )}
-
                 {currentStep === 3 && <SubmitButton />}
               </div>
             </form>
 
-            {/* Divider */}
             <div className="relative my-6">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-[#F0F0F0]" />
@@ -595,11 +820,12 @@ export default function SignUpPage() {
         <div className="relative z-10 flex flex-col h-full p-12 xl:p-16">
           <Link href="/" className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-md bg-[#0A0A0A] flex items-center justify-center">
-            <Image src={Logo}
-              alt="13th Vapour Lounge Logo"
-              className="w-8 h-8 object-contain"
-            />
-          </div>
+              <Image
+                src={Logo}
+                alt="13th Vapour Lounge Logo"
+                className="w-8 h-8 object-contain"
+              />
+            </div>
             <span className="text-white font-semibold text-lg tracking-tight">
               13th Vapour Lounge
             </span>

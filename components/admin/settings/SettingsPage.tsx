@@ -29,6 +29,7 @@ import {
   Save,
   Shield,
   Store,
+  Truck,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -94,6 +95,12 @@ export function SettingsPage({ initialSettings }: SettingsPageProps) {
   const [lowStockThreshold, setLowStockThreshold] = useState(
     String(s.low_stock_threshold ?? "10")
   );
+  const [shippingFee, setShippingFee] = useState(
+    String(s.shipping_fee ?? "50")
+  );
+  const [freeShippingThreshold, setFreeShippingThreshold] = useState(
+    String(s.free_shipping_threshold ?? "0")
+  );
 
   const [isSaving, setIsSaving] = useState(false);
 
@@ -120,6 +127,8 @@ export function SettingsPage({ initialSettings }: SettingsPageProps) {
         email_low_stock_notifications: emailLowStockNotifs,
         email_payment_notifications: emailPaymentNotifs,
         low_stock_threshold: parseInt(lowStockThreshold) || 10,
+        shipping_fee: parseFloat(shippingFee) || 50,
+        free_shipping_threshold: parseFloat(freeShippingThreshold) || 0,
       });
       if (result?.success) {
         toast.success(
@@ -225,7 +234,6 @@ export function SettingsPage({ initialSettings }: SettingsPageProps) {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="PHP">Philippine Peso (₱)</SelectItem>
-                      <SelectItem value="USD">US Dollar ($)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -247,7 +255,56 @@ export function SettingsPage({ initialSettings }: SettingsPageProps) {
             </CardContent>
           </Card>
 
-          {/* Business Hours */}
+          {/* Shipping Settings */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Truck className="h-5 w-5" /> Shipping
+              </CardTitle>
+              <CardDescription>
+                Configure shipping fees for online orders
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="shippingFee">Flat Shipping Fee (₱)</Label>
+                  <Input
+                    id="shippingFee"
+                    type="number"
+                    min="0"
+                    value={shippingFee}
+                    onChange={(e) => setShippingFee(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Charged on every online order
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="freeShippingThreshold">
+                    Free Shipping Above (₱)
+                  </Label>
+                  <Input
+                    id="freeShippingThreshold"
+                    type="number"
+                    min="0"
+                    value={freeShippingThreshold}
+                    onChange={(e) => setFreeShippingThreshold(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Set to 0 to always charge shipping
+                  </p>
+                </div>
+              </div>
+              <Button
+                onClick={() => handleSave("Shipping")}
+                disabled={isSaving}
+              >
+                <Save className="h-4 w-4 mr-2" />
+                {isSaving ? "Saving..." : "Save Changes"}
+              </Button>
+            </CardContent>
+          </Card>
           <BusinessHoursManager />
 
           {/* Feature Toggles */}

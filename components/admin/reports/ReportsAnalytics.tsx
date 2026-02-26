@@ -41,7 +41,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 
-type TimePeriod = "today" | "week" | "month" | "year";
+type TimePeriod = "today" | "week" | "month" | "year" | "custom";
 
 function getDateRangeForPeriod(period: TimePeriod): DateRange | undefined {
   const now = new Date();
@@ -70,8 +70,19 @@ function getDateRangeForPeriod(period: TimePeriod): DateRange | undefined {
 
 export function ReportsAnalytics() {
   const [period, setPeriod] = useState<TimePeriod>("month");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
 
-  const dateRange = useMemo(() => getDateRangeForPeriod(period), [period]);
+  const dateRange = useMemo(() => {
+    if (period === "custom") {
+      if (!customFrom || !customTo) return undefined;
+      return {
+        startDate: new Date(customFrom).toISOString(),
+        endDate: new Date(customTo + "T23:59:59").toISOString(),
+      };
+    }
+    return getDateRangeForPeriod(period);
+  }, [period, customFrom, customTo]);
 
   // Fetch analytics data
   const { data: salesOverview, isLoading: loadingSales } =
@@ -138,28 +149,50 @@ export function ReportsAnalytics() {
   return (
     <div className="space-y-6">
       {/* Period Selector */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-wrap justify-between items-start gap-3">
         <div>
           <h2 className="text-lg font-semibold">Performance Overview</h2>
           <p className="text-sm text-muted-foreground">
             Key metrics for your business
           </p>
         </div>
-        <Select
-          value={period}
-          onValueChange={(value: TimePeriod) => setPeriod(value)}
-        >
-          <SelectTrigger className="w-45">
-            <Calendar className="h-4 w-4 mr-2" />
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="today">Today</SelectItem>
-            <SelectItem value="week">This Week</SelectItem>
-            <SelectItem value="month">This Month</SelectItem>
-            <SelectItem value="year">This Year</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select
+            value={period}
+            onValueChange={(value: TimePeriod) => setPeriod(value)}
+          >
+            <SelectTrigger className="w-45">
+              <Calendar className="h-4 w-4 mr-2" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="today">Today</SelectItem>
+              <SelectItem value="week">This Week</SelectItem>
+              <SelectItem value="month">This Month</SelectItem>
+              <SelectItem value="year">This Year</SelectItem>
+              <SelectItem value="custom">Custom Range</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {period === "custom" && (
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={customFrom}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+              <span className="text-sm text-muted-foreground">to</span>
+              <input
+                type="date"
+                value={customTo}
+                min={customFrom}
+                onChange={(e) => setCustomTo(e.target.value)}
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+          )}
+        </div>
       </div>
 
       {/* KPI Cards */}

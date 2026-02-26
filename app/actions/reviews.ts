@@ -12,7 +12,8 @@ import {
 } from "@/lib/actions/utils";
 import { logAudit } from "@/lib/auth/audit";
 import { requireRole } from "@/lib/auth/roles";
-import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { sanitizeHTML } from "@/lib/validations/sanitize";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";

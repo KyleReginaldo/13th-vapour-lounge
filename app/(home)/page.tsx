@@ -22,7 +22,7 @@ import Link from "next/link";
 export default async function HomePage() {
   const [productsData, user] = await Promise.all([
     getProducts(1, 48),
-    getCurrentUser(),
+    getCurrentUser().catch(() => null),
   ]);
   const products = productsData?.products || [];
   const showVerificationBanner = !!user && !user.is_verified;

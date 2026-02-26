@@ -1,19 +1,31 @@
 /**
  * HTML Sanitization Utilities
  * Prevents XSS attacks by sanitizing user-generated content
+ * Pure JS implementation — no jsdom/dompurify dependency (Vercel ESM compatible)
  */
 
-import DOMPurify from "isomorphic-dompurify";
+const SAFE_TAGS = new Set([
+  "b",
+  "i",
+  "em",
+  "strong",
+  "u",
+  "p",
+  "br",
+  "ul",
+  "ol",
+  "li",
+]);
 
 /**
  * Sanitize HTML content by removing all HTML tags and attributes
  * Use this for user inputs that should be plain text only
  */
 export function sanitizeHTML(input: string): string {
-  return DOMPurify.sanitize(input, {
-    ALLOWED_TAGS: [], // Strip all HTML tags
-    ALLOWED_ATTR: [], // Strip all attributes
-  });
+  return input
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<[^>]+>/g, "")
+    .trim();
 }
 
 /**
@@ -21,10 +33,23 @@ export function sanitizeHTML(input: string): string {
  * Use this for rich text content like product descriptions
  */
 export function sanitizeRichText(input: string): string {
-  return DOMPurify.sanitize(input, {
-    ALLOWED_TAGS: ["b", "i", "em", "strong", "u", "p", "br", "ul", "ol", "li"],
-    ALLOWED_ATTR: [],
-  });
+  // Remove script/style blocks entirely
+  const stripped = input
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "");
+
+  // Remove all tags except those in SAFE_TAGS (also strips all attributes)
+  return stripped.replace(
+    /<\/?([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>/g,
+    (match, tag) => {
+      if (SAFE_TAGS.has(tag.toLowerCase())) {
+        // Keep the tag but strip all attributes
+        const isClosing = match.startsWith("</");
+        return isClosing ? `</${tag.toLowerCase()}>` : `<${tag.toLowerCase()}>`;
+      }
+      return "";
+    }
+  );
 }
 
 /**

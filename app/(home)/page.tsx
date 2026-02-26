@@ -22,7 +22,16 @@ import Link from "next/link";
 export default async function HomePage() {
   let productsData: Awaited<ReturnType<typeof getProducts>> | undefined;
   let user: Awaited<ReturnType<typeof getCurrentUser>> | null = null;
-  let unreviewedOrders: { orderId: string; orderNumber: string; completedAt: string | null; items: { productId: string; productName: string; productSlug: string | null }[] }[] = [];
+  let unreviewedOrders: {
+    orderId: string;
+    orderNumber: string;
+    completedAt: string | null;
+    items: {
+      productId: string;
+      productName: string;
+      productSlug: string | null;
+    }[];
+  }[] = [];
   try {
     [productsData, user] = await Promise.all([
       getProducts(1, 48),
@@ -33,7 +42,12 @@ export default async function HomePage() {
       : [];
   } catch (err) {
     console.error("[HomePage] Fatal render error:", err);
-    productsData = { products: [], totalCount: 0, currentPage: 1, totalPages: 0 };
+    productsData = {
+      products: [],
+      totalCount: 0,
+      currentPage: 1,
+      totalPages: 0,
+    };
     user = null;
     unreviewedOrders = [];
   }

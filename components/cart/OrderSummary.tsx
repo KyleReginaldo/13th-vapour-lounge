@@ -6,6 +6,7 @@ interface OrderSummaryProps {
   summary: {
     subtotal: number;
     tax: number;
+    shipping?: number;
     total: number;
     itemCount: number;
   };
@@ -30,6 +31,16 @@ export const OrderSummary = ({ summary, className }: OrderSummaryProps) => {
           {formatCurrency(summary.subtotal)}
         </span>
       </div>
+
+      {/* Shipping */}
+      {summary.shipping !== undefined && (
+        <div className="flex justify-between text-sm">
+          <span className="text-gray-600 dark:text-gray-400">Shipping</span>
+          <span className="font-medium text-gray-900 dark:text-gray-100">
+            {summary.shipping === 0 ? "Free" : formatCurrency(summary.shipping)}
+          </span>
+        </div>
+      )}
 
       {/* Divider */}
       <div className="border-t border-gray-200 dark:border-gray-700" />

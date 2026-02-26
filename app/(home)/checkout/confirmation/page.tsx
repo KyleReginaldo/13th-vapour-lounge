@@ -73,42 +73,50 @@ function ConfirmationContent() {
   const paymentMethodLabel = order.payment_method?.replace(/_/g, " ") || "N/A";
 
   return (
-    <div className="container py-12">
-      <div className="mx-auto max-w-3xl">
+    <div className="min-h-screen px-4 py-8 sm:px-6 sm:py-12">
+      <div className="mx-auto w-full max-w-2xl">
         {/* Success Icon */}
-        <div className="mb-8 flex justify-center">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-green-100">
-            <CheckCircle2 className="h-12 w-12 text-green-600" />
+        <div className="mb-6 flex justify-center sm:mb-8">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100 sm:h-20 sm:w-20">
+            <CheckCircle2 className="h-9 w-9 text-green-600 sm:h-12 sm:w-12" />
           </div>
         </div>
 
         {/* Success Message */}
-        <div className="mb-8 text-center">
-          <h1 className="mb-2 text-3xl font-bold">Order Confirmed!</h1>
-          <p className="text-muted-foreground">
+        <div className="mb-6 text-center sm:mb-8">
+          <h1 className="mb-2 text-2xl font-bold sm:text-3xl">
+            Order Confirmed!
+          </h1>
+          <p className="text-sm text-muted-foreground sm:text-base">
             Thank you for your order. We&apos;ve received your order and will
             process it shortly.
           </p>
         </div>
 
         {/* Order Number */}
-        <div className="mb-8 rounded-lg border bg-muted/50 p-6 text-center">
-          <p className="mb-1 text-sm text-muted-foreground">Order Number</p>
-          <p className="text-2xl font-bold">{order.order_number}</p>
+        <div className="mb-6 rounded-lg border bg-muted/50 p-4 text-center sm:mb-8 sm:p-6">
+          <p className="mb-1 text-xs text-muted-foreground sm:text-sm">
+            Order Number
+          </p>
+          <p className="text-xl font-bold sm:text-2xl">{order.order_number}</p>
         </div>
 
         {/* Order Details Card */}
-        <div className="mb-8 rounded-lg border bg-card p-6">
-          <h2 className="mb-6 text-lg font-semibold">Order Details</h2>
+        <div className="mb-6 rounded-lg border bg-card p-4 sm:mb-8 sm:p-6">
+          <h2 className="mb-4 text-base font-semibold sm:mb-6 sm:text-lg">
+            Order Details
+          </h2>
 
           {/* Order Items */}
-          <div className="mb-6 space-y-4">
+          <div className="mb-4 space-y-3 sm:mb-6 sm:space-y-4">
             {orderItems.map((item) => (
-              <div key={item.id} className="flex gap-4">
-                <div className="flex-1 space-y-1">
-                  <p className="font-medium">{item.product_name}</p>
+              <div key={item.id} className="flex items-start gap-3">
+                <div className="flex-1 space-y-0.5 sm:space-y-1">
+                  <p className="text-sm font-medium leading-tight sm:text-base">
+                    {item.product_name}
+                  </p>
                   {item.variant_attributes && (
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-xs text-muted-foreground sm:text-sm">
                       {Object.entries(
                         (item.variant_attributes as Record<string, string>) ||
                           {}
@@ -117,21 +125,21 @@ function ConfirmationContent() {
                         .join(", ")}
                     </p>
                   )}
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-xs text-muted-foreground sm:text-sm">
                     Qty: {item.quantity}
                   </p>
                 </div>
-                <div className="text-sm font-medium">
+                <div className="shrink-0 text-sm font-medium">
                   {formatCurrency(item.subtotal)}
                 </div>
               </div>
             ))}
           </div>
 
-          <Separator className="my-6" />
+          <Separator className="my-4 sm:my-6" />
 
           {/* Price Breakdown */}
-          <div className="space-y-3">
+          <div className="space-y-2 sm:space-y-3">
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Subtotal</span>
               <span>{formatCurrency(order.subtotal)}</span>
@@ -155,7 +163,7 @@ function ConfirmationContent() {
 
             <Separator />
 
-            <div className="flex justify-between text-base font-semibold">
+            <div className="flex justify-between text-sm font-semibold sm:text-base">
               <span>Total</span>
               <span>{formatCurrency(order.total)}</span>
             </div>
@@ -163,10 +171,12 @@ function ConfirmationContent() {
         </div>
 
         {/* Shipping & Payment Info */}
-        <div className="mb-8 grid gap-6 sm:grid-cols-2">
+        <div className="mb-6 grid gap-4 sm:mb-8 sm:grid-cols-2 sm:gap-6">
           {/* Shipping Address */}
-          <div className="rounded-lg border bg-card p-6">
-            <h3 className="mb-4 font-semibold">Shipping Address</h3>
+          <div className="rounded-lg border bg-card p-4 sm:p-6">
+            <h3 className="mb-3 text-sm font-semibold sm:mb-4 sm:text-base">
+              Shipping Address
+            </h3>
             <div className="space-y-1 text-sm">
               <p className="font-medium">{order.shipping_full_name}</p>
               <p className="text-muted-foreground">{order.shipping_phone}</p>
@@ -183,8 +193,10 @@ function ConfirmationContent() {
           </div>
 
           {/* Payment Method */}
-          <div className="rounded-lg border bg-card p-6">
-            <h3 className="mb-4 font-semibold">Payment Method</h3>
+          <div className="rounded-lg border bg-card p-4 sm:p-6">
+            <h3 className="mb-3 text-sm font-semibold sm:mb-4 sm:text-base">
+              Payment Method
+            </h3>
             <div className="space-y-2 text-sm">
               <p className="capitalize">{paymentMethodLabel}</p>
               <div
@@ -212,20 +224,20 @@ function ConfirmationContent() {
         </div>
 
         {/* Next Steps */}
-        <div className="mb-8 rounded-lg border bg-blue-50 p-6">
-          <h3 className="mb-3 font-semibold text-blue-900">
+        <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950/40 sm:mb-8 sm:p-6">
+          <h3 className="mb-3 text-sm font-semibold text-blue-900 dark:text-blue-300 sm:text-base">
             What&apos;s Next?
           </h3>
-          <ul className="space-y-2 text-sm text-blue-800">
+          <ul className="space-y-2 text-xs text-blue-800 dark:text-blue-400 sm:text-sm">
             <li className="flex items-start gap-2">
-              <span className="mt-1">•</span>
+              <span className="mt-0.5">•</span>
               <span>
                 You&apos;ll receive an email confirmation at your registered
                 email address.
               </span>
             </li>
             <li className="flex items-start gap-2">
-              <span className="mt-1">•</span>
+              <span className="mt-0.5">•</span>
               <span>
                 {order.payment_status === "pending"
                   ? "Once your payment is verified, we'll start processing your order."
@@ -233,7 +245,7 @@ function ConfirmationContent() {
               </span>
             </li>
             <li className="flex items-start gap-2">
-              <span className="mt-1">•</span>
+              <span className="mt-0.5">•</span>
               <span>
                 Track your order status in your account under &quot;My
                 Orders&quot;.
@@ -244,13 +256,13 @@ function ConfirmationContent() {
 
         {/* Action Buttons */}
         <div className="flex flex-col gap-3 sm:flex-row">
-          <Button asChild className="flex-1">
+          <Button asChild className="h-11 flex-1 sm:h-10">
             <Link href="/">
               <Home className="mr-2 h-4 w-4" />
               Continue Shopping
             </Link>
           </Button>
-          <Button asChild variant="outline" className="flex-1">
+          <Button asChild variant="outline" className="h-11 flex-1 sm:h-10">
             <Link href="/profile?tab=orders">
               <Package className="mr-2 h-4 w-4" />
               View My Orders

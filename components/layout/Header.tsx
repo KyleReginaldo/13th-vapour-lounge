@@ -1,14 +1,12 @@
 "use client";
 
 import { CartBadge } from "@/components/cart/CartBadge";
-import { CartDrawer } from "@/components/cart/CartDrawer";
 import { NotificationBell } from "@/components/layout/NotificationBell";
 import { SearchAutocomplete } from "@/components/search/SearchAutocomplete";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader } from "@/components/ui/sheet";
 import { type UserWithRole } from "@/lib/auth/roles";
 import { signOut } from "@/lib/auth/supabase-auth";
-import { useCartStore } from "@/lib/stores/cart-store";
 import {
   Grid,
   Home,
@@ -30,7 +28,6 @@ interface HeaderProps {
 
 export const Header = ({ user, unreadNotifCount = 0 }: HeaderProps) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { openCart } = useCartStore();
 
   return (
     <>
@@ -81,15 +78,13 @@ export const Header = ({ user, unreadNotifCount = 0 }: HeaderProps) => {
                 />
               )}
 
-              <Button
-                variant="ghost"
-                size="icon"
-                className="relative"
-                onClick={openCart}
+              <Link
+                href="/cart"
+                className="relative inline-flex items-center justify-center h-10 w-10 rounded-md hover:bg-accent transition-colors"
               >
                 <ShoppingCart className="h-5 w-5" />
                 <CartBadge />
-              </Button>
+              </Link>
 
               {user ? (
                 <>
@@ -177,9 +172,6 @@ export const Header = ({ user, unreadNotifCount = 0 }: HeaderProps) => {
             >
               Sale
             </Link>
-
-            {/* Cart Drawer */}
-            <CartDrawer />
           </nav>
         </div>
       </header>

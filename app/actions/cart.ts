@@ -282,13 +282,15 @@ export const getCart = withErrorHandling(async (): Promise<ActionResponse> => {
     return sum + price * item.quantity;
   }, 0);
 
-  const total = subtotal;
+  const shipping = 50;
+  const total = subtotal + shipping;
 
   return success({
     items: data,
     summary: {
       subtotal,
       tax: 0,
+      shipping,
       total,
       itemCount: data.reduce((sum, item) => sum + item.quantity, 0),
     },

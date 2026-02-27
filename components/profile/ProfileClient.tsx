@@ -5,6 +5,7 @@ import {
   submitAgeVerification,
 } from "@/app/actions/age-verification";
 import { uploadReviewImage } from "@/app/actions/images";
+import { cancelOrderByCustomer } from "@/app/actions/orders";
 import {
   reorderItems,
   requestPasswordChangeOTP,
@@ -14,6 +15,17 @@ import {
   type ProfileOrder,
 } from "@/app/actions/profile";
 import { submitProductReview } from "@/app/actions/reviews";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -529,12 +541,16 @@ function OrderDetailSheet({
   onClose,
   onReorder,
   reorderingId,
+  onCancel,
+  cancellingId,
 }: {
   order: ProfileOrder | null;
   open: boolean;
   onClose: () => void;
   onReorder: (id: string) => void;
   reorderingId: string | null;
+  onCancel: (id: string) => void;
+  cancellingId: string | null;
 }) {
   const [reviewingProduct, setReviewingProduct] = useState<{
     id: string;
@@ -733,6 +749,42 @@ function OrderDetailSheet({
               Order Again
             </Button>
           )}
+          {order.status === "pending" && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  disabled={cancellingId === order.id}
+                  className="w-full h-10 rounded-xl border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 disabled:opacity-60"
+                >
+                  {cancellingId === order.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : null}
+                  Cancel Order
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Cancel this order?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will cancel order{" "}
+                    <span className="font-semibold">{order.order_number}</span>.
+                    This cannot be undone. If you already paid, please contact
+                    us to arrange a refund.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Keep Order</AlertDialogCancel>
+                  <AlertDialogAction
+                    className="bg-red-600 hover:bg-red-700 text-white"
+                    onClick={() => onCancel(order.id)}
+                  >
+                    Yes, Cancel Order
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
           <Button
             variant="outline"
             onClick={onClose}
@@ -753,6 +805,27 @@ function OrdersTab({ orders }: { orders: ProfileOrder[] }) {
   const [reorderingId, setReorderingId] = useState<string | null>(null);
   const [reorderMsg, setReorderMsg] = useState<string | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<ProfileOrder | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [cancelMsg, setCancelMsg] = useState<string | null>(null);
+  const [cancelSuccess, setCancelSuccess] = useState(false);
+
+  const handleCancel = async (orderId: string) => {
+    setCancellingId(orderId);
+    setCancelMsg(null);
+    try {
+      const result = await cancelOrderByCustomer(orderId);
+      if (result.success) {
+        setCancelSuccess(true);
+        setCancelMsg("Order cancelled successfully.");
+        setSelectedOrder(null);
+      } else {
+        setCancelSuccess(false);
+        setCancelMsg(result.message ?? "Failed to cancel order.");
+      }
+    } finally {
+      setCancellingId(null);
+    }
+  };
 
   const handleReorder = async (orderId: string) => {
     setReorderingId(orderId);
@@ -794,7 +867,26 @@ function OrdersTab({ orders }: { orders: ProfileOrder[] }) {
         onClose={() => setSelectedOrder(null)}
         onReorder={handleReorder}
         reorderingId={reorderingId}
+        onCancel={handleCancel}
+        cancellingId={cancellingId}
       />
+      {cancelMsg && cancellingId === null && (
+        <div
+          className={`rounded-xl border px-4 py-3 text-[13px] flex items-center justify-between gap-3 ${
+            cancelSuccess
+              ? "border-green-100 bg-green-50 text-green-700"
+              : "border-red-100 bg-red-50 text-red-700"
+          }`}
+        >
+          <span>{cancelMsg}</span>
+          <button
+            onClick={() => setCancelMsg(null)}
+            className="shrink-0 text-xs underline opacity-60 hover:opacity-100"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       <div className="space-y-3">
         {orders.map((order) => (
           <div
@@ -1362,7 +1454,7 @@ function SettingsTab({ user }: { user: UserWithRole }) {
                   {selectedFile ? (
                     <div className="flex items-center justify-center gap-2">
                       <FileText className="h-5 w-5 text-[#0A0A0A]" />
-                      <span className="text-[13px] font-medium text-[#0A0A0A] truncate max-w-[200px]">
+                      <span className="text-[13px] font-medium text-[#0A0A0A] truncate max-w-50">
                         {selectedFile.name}
                       </span>
                     </div>

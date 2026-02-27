@@ -197,6 +197,62 @@ export const cancelOrder = withErrorHandling(
 );
 
 /**
+ * Cancel order — customer-facing (pending orders only)
+ */
+export const cancelOrderByCustomer = withErrorHandling(
+  async (id: string): Promise<ActionResponse> => {
+    const supabase = await createClient();
+
+    const {
+      data: { user: authUser },
+    } = await supabase.auth.getUser();
+    if (!authUser) return error("Not authenticated", ErrorCode.UNAUTHORIZED);
+
+    const { data: order } = await supabase
+      .from("orders")
+      .select("id, status, order_number, customer_id")
+      .eq("id", id)
+      .eq("customer_id", authUser.id)
+      .maybeSingle();
+
+    if (!order) return error("Order not found", ErrorCode.NOT_FOUND);
+
+    if (order.status !== "pending") {
+      return error(
+        "This order can no longer be cancelled. Only pending orders can be cancelled.",
+        ErrorCode.CONFLICT
+      );
+    }
+
+    const { data: updatedOrder, error: updateError } = await supabase
+      .from("orders")
+      .update({
+        status: "cancelled",
+        cancelled_at: new Date().toISOString(),
+        customer_notes: "Cancelled by customer",
+      })
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (updateError) return error(updateError.message);
+
+    await logAudit({
+      action: "update",
+      entityType: "order",
+      entityId: id,
+      oldValue: { status: "pending" },
+      newValue: { status: "cancelled", cancelled_by: "customer" },
+    });
+
+    revalidatePath("/profile");
+    revalidatePath("/orders");
+    revalidatePath("/admin/orders");
+    return success(updatedOrder, "Order cancelled successfully");
+  }
+);
+
+/**
  * Generate and assign tracking number
  */
 export const assignTrackingNumber = withErrorHandling(

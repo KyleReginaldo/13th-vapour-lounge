@@ -56,7 +56,7 @@ export function SettingsPage({ initialSettings }: SettingsPageProps) {
     s.shop_phone ?? "+63 917 000 0000"
   );
   const [shopAddress, setShopAddress] = useState(
-    s.shop_address ?? "123 Vape Street, BGC, Taguig"
+    s.shop_address ?? "Trece Martires City"
   );
   const [currency, setCurrency] = useState(s.currency ?? "PHP");
   const [taxRate, setTaxRate] = useState(String(s.tax_rate ?? "12"));

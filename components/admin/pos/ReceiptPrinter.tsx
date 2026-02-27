@@ -105,9 +105,8 @@ export function ReceiptPrinter({
             {/* Header */}
             <div className="text-center space-y-1">
               <div className="text-lg font-bold">13TH VAPOUR LOUNGE</div>
-              <div className="text-xs">Vape Shop & Lounge</div>
-              <div className="text-xs">BGC, Taguig City</div>
-              <div className="text-xs">Tel: +63 917 000 0000</div>
+              <div className="text-xs">Trece Martires City</div>
+              <div className="text-xs">Tel: +63 977 797 07990</div>
             </div>
 
             <Separator className="my-2" />

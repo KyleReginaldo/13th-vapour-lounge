@@ -12,6 +12,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { formatCurrency } from "@/lib/utils";
 import { useMutation } from "@tanstack/react-query";
 import {
@@ -101,6 +107,7 @@ export function POSCart({
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
+  const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
   const [currentReceipt, setCurrentReceipt] = useState<ReceiptData | null>(
     null
   );
@@ -267,19 +274,25 @@ export function POSCart({
         price: item.price,
       }));
 
-      const result = await createPOSOrderWithSplitPayment(items, payments);
+      const result = await createPOSOrderWithSplitPayment(
+        items,
+        payments,
+        cashReceived
+      );
 
       if (result.success && result.data) {
         setCurrentReceipt(result.data.receipt);
         setShowReceipt(true);
         onTransactionComplete({
-          id: result.data.order.id,
+          id: result.data.receipt.receiptNumber,
           items: cart,
           subtotal,
           tax: 0,
           total,
           payments,
-          timestamp: new Date().toISOString(),
+          cashReceived: result.data.receipt.cashReceived,
+          change: result.data.receipt.change,
+          timestamp: result.data.receipt.timestamp,
         });
         clearCart();
         toast.success("Transaction completed!");
@@ -293,50 +306,44 @@ export function POSCart({
 
   return (
     <>
-      <div className="grid grid-cols-1 xl:grid-cols-[1fr_420px] gap-6 h-[calc(100vh-140px)] p-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-0 lg:gap-6 h-full p-0 lg:p-6">
         {/* Products Section */}
-        <div className="space-y-4">
+        <div className="flex flex-col h-full p-4 lg:p-0 pb-24 lg:pb-0">
           {/* Search & Actions */}
-          <Card className="shadow-sm">
-            <CardContent className="p-4">
-              <div className="flex gap-3">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search by name or SKU..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 h-11"
-                  />
-                </div>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-11 w-11"
-                  onClick={() => setShowScanner(true)}
-                >
-                  <QrCode className="h-5 w-5" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-11 w-11"
-                  onClick={() =>
-                    setViewMode(viewMode === "grid" ? "list" : "grid")
-                  }
-                >
-                  {viewMode === "grid" ? (
-                    <List className="h-5 w-5" />
-                  ) : (
-                    <Grid3x3 className="h-5 w-5" />
-                  )}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="flex gap-3 shrink-0 mb-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by name..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 h-11"
+              />
+            </div>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-11 w-11"
+              onClick={() => setShowScanner(true)}
+            >
+              <QrCode className="h-5 w-5" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-11 w-11"
+              onClick={() => setViewMode(viewMode === "grid" ? "list" : "grid")}
+            >
+              {viewMode === "grid" ? (
+                <List className="h-5 w-5" />
+              ) : (
+                <Grid3x3 className="h-5 w-5" />
+              )}
+            </Button>
+          </div>
 
           {/* Products Grid/List */}
-          <ScrollArea className="h-[calc(100vh-280px)]">
+          <ScrollArea className="flex-1 min-h-0">
             {viewMode === "grid" ? (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 pb-4">
                 {filteredProducts.map((product) => {
@@ -458,10 +465,10 @@ export function POSCart({
           </ScrollArea>
         </div>
 
-        {/* Cart Sidebar */}
-        <div className="space-y-4">
-          <Card className="shadow-lg">
-            <CardContent className="p-0">
+        {/* Cart Sidebar — desktop/large tablet only */}
+        <div className="hidden lg:flex flex-col h-full">
+          <Card className="shadow-lg flex flex-col h-full overflow-hidden">
+            <CardContent className="p-0 flex flex-col h-full">
               {/* Cart Header */}
               <div className="p-4 border-b bg-muted/30">
                 <div className="flex items-center justify-between mb-2">
@@ -489,7 +496,7 @@ export function POSCart({
               </div>
 
               {/* Cart Items */}
-              <ScrollArea className="h-[calc(100vh-500px)]">
+              <ScrollArea className="flex-1 min-h-0">
                 <div className="p-4 space-y-3">
                   {cart.map((item) => (
                     <div
@@ -621,6 +628,165 @@ export function POSCart({
           </Card>
         </div>
       </div>
+
+      {/* Mobile: floating checkout bar */}
+      {cart.length > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 lg:hidden z-40 border-t bg-background shadow-lg">
+          <div className="p-3">
+            <Button
+              onClick={() => setIsMobileCartOpen(true)}
+              className="w-full h-14"
+            >
+              <ShoppingCart className="h-5 w-5 mr-2 shrink-0" />
+              <span>
+                {itemCount} {itemCount === 1 ? "item" : "items"}
+              </span>
+              <span className="mx-2 opacity-50">·</span>
+              <span className="font-bold">{formatCurrency(total)}</span>
+              <span className="ml-auto opacity-80 text-sm">View Cart →</span>
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile: Cart Sheet */}
+      <Sheet open={isMobileCartOpen} onOpenChange={setIsMobileCartOpen}>
+        <SheetContent side="bottom" className="h-[85vh] p-0 flex flex-col">
+          <SheetHeader className="shrink-0 p-4 border-b">
+            <div className="flex items-center justify-between">
+              <SheetTitle className="flex items-center gap-2">
+                <ShoppingCart className="h-5 w-5" />
+                Current Order
+              </SheetTitle>
+              {cart.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    clearCart();
+                    setIsMobileCartOpen(false);
+                  }}
+                  className="h-8 text-muted-foreground hover:text-destructive"
+                >
+                  <X className="h-4 w-4 mr-1" />
+                  Clear
+                </Button>
+              )}
+            </div>
+            <p className="text-sm text-muted-foreground text-left">
+              {itemCount} items · {formatCurrency(total)}
+            </p>
+          </SheetHeader>
+
+          <ScrollArea className="flex-1 min-h-0">
+            <div className="p-4 space-y-3">
+              {cart.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex gap-3 p-3 bg-muted/30 rounded-lg"
+                >
+                  <div className="relative h-14 w-14 bg-muted rounded-md overflow-hidden shrink-0">
+                    {item.image ? (
+                      <Image
+                        src={item.image}
+                        alt={item.name}
+                        fill
+                        className="object-cover"
+                      />
+                    ) : (
+                      <div className="flex items-center justify-center h-full">
+                        <Package className="h-5 w-5 text-muted-foreground" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-medium text-sm line-clamp-1">
+                      {item.name}
+                    </h4>
+                    <p className="text-xs text-muted-foreground">{item.sku}</p>
+                    <span className="text-sm font-bold">
+                      {formatCurrency(item.price)}
+                    </span>
+                  </div>
+                  <div className="flex flex-col items-end justify-between gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                      onClick={() => removeFromCart(item.id)}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        onClick={() => updateQuantity(item.id, -1)}
+                      >
+                        <Minus className="h-3 w-3" />
+                      </Button>
+                      <span className="w-8 text-center text-sm font-medium">
+                        {item.quantity}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        onClick={() => updateQuantity(item.id, 1)}
+                      >
+                        <Plus className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+
+          {cart.length > 0 && (
+            <div className="shrink-0 p-4 border-t bg-muted/10 space-y-3">
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Subtotal</span>
+                  <span className="font-medium">
+                    {formatCurrency(subtotal)}
+                  </span>
+                </div>
+                <Separator />
+                <div className="flex justify-between text-lg font-bold">
+                  <span>Total</span>
+                  <span className="text-primary">{formatCurrency(total)}</span>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    parkOrderMutation.mutate();
+                    setIsMobileCartOpen(false);
+                  }}
+                  disabled={parkOrderMutation.isPending}
+                  className="h-12"
+                >
+                  <ParkingSquare className="h-4 w-4 mr-2" />
+                  Park
+                </Button>
+                <Button
+                  onClick={() => {
+                    setShowPaymentDialog(true);
+                    setIsMobileCartOpen(false);
+                  }}
+                  className="h-12"
+                >
+                  <Receipt className="h-4 w-4 mr-2" />
+                  Checkout
+                </Button>
+              </div>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
 
       {/* Modals */}
       <SplitPaymentModal

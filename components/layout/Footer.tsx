@@ -1,4 +1,3 @@
-import { LegalModal } from "@/components/shared/LegalModal";
 import { Facebook } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -146,33 +145,37 @@ const Footer = () => {
             <h4 className="font-semibold mb-4">Legal</h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li>
-                <LegalModal
-                  type="terms"
-                  trigger={
-                    <span className="hover:text-foreground transition-colors cursor-pointer">
-                      Terms of Service
-                    </span>
-                  }
-                />
+                <Link
+                  href="/terms"
+                  className="hover:text-foreground transition-colors"
+                >
+                  Terms of Service
+                </Link>
               </li>
               <li>
-                <LegalModal
-                  type="privacy"
-                  trigger={
-                    <span className="hover:text-foreground transition-colors cursor-pointer">
-                      Privacy Policy
-                    </span>
-                  }
-                />
-              </li>
-              {/* <li>
                 <Link
-                  href="/shipping"
+                  href="/privacy-policy"
+                  className="hover:text-foreground transition-colors"
+                >
+                  Privacy Policy
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/return-policy"
+                  className="hover:text-foreground transition-colors"
+                >
+                  Return &amp; Refund Policy
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/shipping-policy"
                   className="hover:text-foreground transition-colors"
                 >
                   Shipping Policy
                 </Link>
-              </li> */}
+              </li>
             </ul>
           </div>
         </div>

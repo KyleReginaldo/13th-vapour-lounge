@@ -142,7 +142,7 @@ export function AdminDashboardClient({
           value={formatCurrency(stats.todaySales)}
           description="Today's earnings"
           icon={DollarSign}
-          trend={{ value: "+12.5% from yesterday", positive: true }}
+          // trend={{ value: "+12.5% from yesterday", positive: true }}
         />
 
         <StatCard
@@ -150,7 +150,7 @@ export function AdminDashboardClient({
           value={stats.totalOrders}
           description="Lifetime orders"
           icon={ShoppingCart}
-          trend={{ value: `${stats.pendingOrders} pending`, positive: false }}
+          // trend={{ value: `${stats.pendingOrders} pending`, positive: false }}
         />
 
         <StatCard
@@ -173,7 +173,7 @@ export function AdminDashboardClient({
           value={stats.userCount}
           description="Registered users"
           icon={Users}
-          trend={{ value: "+5.2% this month", positive: true }}
+          // trend={{ value: "+5.2% this month", positive: true }}
         />
       </div>
 
@@ -306,12 +306,6 @@ export function AdminDashboardClient({
                 </p>
               </div>
               <div className="text-xs text-muted-foreground">1 hour ago</div>
-            </div>
-
-            <div className="pt-4">
-              <Button variant="outline" className="w-full">
-                View All Activity
-              </Button>
             </div>
           </div>
         </CardContent>

@@ -1195,6 +1195,7 @@ export type Database = {
           created_at: string | null
           critical_stock_threshold: number | null
           description: string | null
+          expiration_date: string | null
           has_variants: boolean | null
           id: string
           is_featured: boolean | null
@@ -1225,6 +1226,7 @@ export type Database = {
           created_at?: string | null
           critical_stock_threshold?: number | null
           description?: string | null
+          expiration_date?: string | null
           has_variants?: boolean | null
           id?: string
           is_featured?: boolean | null
@@ -1255,6 +1257,7 @@ export type Database = {
           created_at?: string | null
           critical_stock_threshold?: number | null
           description?: string | null
+          expiration_date?: string | null
           has_variants?: boolean | null
           id?: string
           is_featured?: boolean | null

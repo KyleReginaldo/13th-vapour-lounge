@@ -158,6 +158,7 @@ export const clockIn = withErrorHandling(
         register_id: validated.register_id,
         opening_cash: validated.opening_cash,
         clock_in: new Date().toISOString(),
+        status: "open",
       })
       .select()
       .single();
@@ -165,6 +166,7 @@ export const clockIn = withErrorHandling(
     if (insertError) return error(insertError.message);
 
     revalidatePath("/admin/staff");
+    revalidatePath("/admin/shifts");
     return success(shift, "Clocked in successfully");
   }
 );
@@ -204,7 +206,7 @@ export const clockOut = withErrorHandling(
       (shift.opening_cash || 0) +
       (orders?.reduce((sum, o) => sum + o.total, 0) || 0);
 
-    const discrepancy = validated.closing_cash - expectedCash;
+    const cashDifference = validated.closing_cash - expectedCash;
 
     const { data: updatedShift, error: updateError } = await supabase
       .from("staff_shifts")
@@ -212,8 +214,9 @@ export const clockOut = withErrorHandling(
         clock_out: new Date().toISOString(),
         closing_cash: validated.closing_cash,
         expected_cash: expectedCash,
-        discrepancy,
+        cash_difference: cashDifference,
         notes: validated.notes,
+        status: "closed",
       })
       .eq("id", validated.shift_id)
       .select()
@@ -222,6 +225,7 @@ export const clockOut = withErrorHandling(
     if (updateError) return error(updateError.message);
 
     revalidatePath("/admin/staff");
+    revalidatePath("/admin/shifts");
     return success(updatedShift, "Clocked out successfully");
   }
 );
@@ -289,6 +293,45 @@ export const getActiveShifts = withErrorHandling(
 
     if (fetchError) return error(fetchError.message);
 
+    return success(data);
+  }
+);
+
+/**
+ * Get all active cash registers (for clock-in register selection)
+ */
+export const getCashRegisters = withErrorHandling(
+  async (): Promise<ActionResponse> => {
+    await requireRole(["admin", "staff"]);
+    const supabase = await createClient();
+
+    const { data, error: fetchError } = await supabase
+      .from("cash_registers")
+      .select("id, name, location")
+      .eq("is_active", true)
+      .order("name");
+
+    if (fetchError) return error(fetchError.message);
+    return success(data);
+  }
+);
+
+/**
+ * Get the currently logged-in user's active (not clocked out) shift
+ */
+export const getMyActiveShift = withErrorHandling(
+  async (): Promise<ActionResponse> => {
+    const user = await requireRole(["admin", "staff"]);
+    const supabase = await createClient();
+
+    const { data, error: fetchError } = await supabase
+      .from("staff_shifts")
+      .select(`*, register:register_id(name, location)`)
+      .eq("staff_id", user.id)
+      .is("clock_out", null)
+      .maybeSingle();
+
+    if (fetchError) return error(fetchError.message);
     return success(data);
   }
 );

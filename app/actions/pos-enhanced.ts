@@ -35,6 +35,7 @@ export const createPOSOrderWithSplitPayment = withErrorHandling(
   async (
     items: { product_id: string; quantity: number; price: number }[],
     payments: SplitPayment[],
+    cashReceived?: number,
     customerId?: string
   ): Promise<ActionResponse> => {
     const user = await requireRole(["admin", "staff"]);
@@ -154,6 +155,50 @@ export const createPOSOrderWithSplitPayment = withErrorHandling(
 
     // Generate receipt
     const receiptNumber = `RCP-${Date.now()}`;
+
+    // --- Save to pos_transactions & pos_transaction_items ---
+    const transactionNumber = `TXN-${Date.now()}`;
+    const primaryPaymentMethod = primaryPayment.method;
+    const hasCash = payments.some((p) => p.method === "cash");
+    const actualCashReceived = hasCash ? (cashReceived ?? null) : null;
+    const changeGiven =
+      actualCashReceived !== null
+        ? Math.max(0, actualCashReceived - totalWithTax)
+        : null;
+
+    const { data: posTransaction, error: posTransactionError } = await supabase
+      .from("pos_transactions")
+      .insert({
+        staff_id: user.id,
+        customer_id: customerId || null,
+        transaction_number: transactionNumber,
+        receipt_number: receiptNumber,
+        payment_method: primaryPaymentMethod,
+        payment_details: payments as any,
+        cash_received: actualCashReceived,
+        change_given: changeGiven,
+        subtotal,
+        tax,
+        total: totalWithTax,
+        status: "completed",
+      })
+      .select()
+      .single();
+
+    if (!posTransactionError && posTransaction) {
+      const posItems = items.map((item) => {
+        const product = products.find((p) => p.id === item.product_id);
+        return {
+          transaction_id: posTransaction.id,
+          product_id: item.product_id,
+          quantity: item.quantity,
+          unit_price: item.price,
+          subtotal: item.price * item.quantity,
+        };
+      });
+      await supabase.from("pos_transaction_items").insert(posItems);
+    }
+    // ---------------------------------------------------------
     const receiptData: ReceiptData = {
       receiptNumber,
       orderNumber,
@@ -167,6 +212,8 @@ export const createPOSOrderWithSplitPayment = withErrorHandling(
       tax,
       total: totalWithTax,
       payments,
+      cashReceived: actualCashReceived ?? undefined,
+      change: changeGiven ?? undefined,
       timestamp: new Date().toISOString(),
       servedBy: `${user.first_name || ""} ${user.last_name || ""}`.trim(),
     };

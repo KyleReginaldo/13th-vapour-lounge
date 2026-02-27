@@ -1,6 +1,6 @@
 "use client";
 
-import { getBrands } from "@/app/actions/categories-brands";
+import { getBrands, getCategories } from "@/app/actions/categories-brands";
 import { createProductVariant } from "@/app/actions/product-variants";
 import {
   createProduct,
@@ -111,6 +111,9 @@ export function ProductsManagement({
   const [slug, setSlug] = useState("");
   const [qrCode, setQrCode] = useState("");
   const [brands, setBrands] = useState<Array<{ id: string; name: string }>>([]);
+  const [dbCategories, setDbCategories] = useState<
+    Array<{ id: string; name: string }>
+  >([]);
 
   // Spec / attributes state
   const [vapeType, setVapeType] = useState("");
@@ -120,15 +123,19 @@ export function ProductsManagement({
   const [specPgvg, setSpecPgvg] = useState("");
   const [specCoil, setSpecCoil] = useState("");
 
-  // Fetch brands on mount
+  // Fetch brands and categories on mount
   useEffect(() => {
-    async function loadBrands() {
-      const result = await getBrands();
-      if (result.success && result.data) {
-        setBrands(result.data);
-      }
+    async function loadData() {
+      const [brandsResult, categoriesResult] = await Promise.all([
+        getBrands(),
+        getCategories(),
+      ]);
+      if (brandsResult.success && brandsResult.data)
+        setBrands(brandsResult.data);
+      if (categoriesResult.success && categoriesResult.data)
+        setDbCategories(categoriesResult.data);
     }
-    loadBrands();
+    loadData();
   }, []);
 
   // Auto-generate slug and QR code from product name
@@ -472,12 +479,11 @@ export function ProductsManagement({
                         className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <option value="">Select category</option>
-                        <option value="Vape Devices">Vape Devices</option>
-                        <option value="E-Liquids">E-Liquids</option>
-                        <option value="Coils">Coils</option>
-                        <option value="Accessories">Accessories</option>
-                        <option value="Pods">Pods</option>
-                        <option value="Batteries">Batteries</option>
+                        {dbCategories.map((cat) => (
+                          <option key={cat.id} value={cat.name}>
+                            {cat.name}
+                          </option>
+                        ))}
                       </select>
                     </div>
                     <div className="space-y-2">

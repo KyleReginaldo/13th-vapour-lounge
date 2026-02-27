@@ -1,20 +1,26 @@
 "use client";
 
-import { POSCart } from "@/components/admin/pos/POSCart";
 import { ParkedOrdersPanel } from "@/components/admin/pos/ParkedOrdersPanel";
+import { POSCart } from "@/components/admin/pos/POSCart";
+import { POSRefund } from "@/components/admin/pos/POSRefund";
+import { POSRefundModal } from "@/components/admin/pos/POSRefundModal";
 import { TransactionHistory } from "@/components/admin/pos/TransactionHistory";
-import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
 import {
+  ArrowLeft,
   Clock,
   DollarSign,
   History,
+  Maximize2,
+  Minimize2,
   ParkingSquare,
+  RotateCcw,
   ShoppingCart,
   Store,
 } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 type Product = {
@@ -81,6 +87,93 @@ export default function POSPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("pos");
   const [cartToRestore, setCartToRestore] = useState<any[] | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen();
+      setIsFullscreen(true);
+    } else {
+      document.exitFullscreen();
+      setIsFullscreen(false);
+    }
+  };
+
+  // Sync state when user exits fullscreen via Escape key
+  useEffect(() => {
+    const handler = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", handler);
+    return () => document.removeEventListener("fullscreenchange", handler);
+  }, []);
+
+  // Load today's transactions from DB
+  useEffect(() => {
+    async function loadTransactions() {
+      const supabase = createClient();
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+
+      const { data } = await supabase
+        .from("pos_transactions")
+        .select(
+          `
+          id,
+          transaction_number,
+          receipt_number,
+          payment_method,
+          payment_details,
+          cash_received,
+          change_given,
+          subtotal,
+          tax,
+          total,
+          created_at,
+          pos_transaction_items(
+            id,
+            quantity,
+            unit_price,
+            subtotal,
+            product_id,
+            products(name, sku)
+          )
+        `
+        )
+        .gte("created_at", todayStart.toISOString())
+        .eq("status", "completed")
+        .order("created_at", { ascending: true });
+
+      if (data) {
+        const mapped: Transaction[] = data.map((t: any) => {
+          const payments: any[] = t.payment_details ?? [];
+          const cashPayment = payments.find((p: any) => p.method === "cash");
+          return {
+            id: t.receipt_number || t.transaction_number || t.id,
+            items: (t.pos_transaction_items ?? []).map((item: any) => ({
+              id: item.id,
+              name: item.products?.name ?? "Unknown Product",
+              sku: item.products?.sku ?? "",
+              quantity: item.quantity,
+              price: item.unit_price,
+            })),
+            subtotal: t.subtotal,
+            tax: t.tax,
+            total: t.total,
+            paymentMethod: t.payment_method ?? "cash",
+            cashReceived: t.cash_received ?? cashPayment?.amount,
+            change: t.change_given > 0 ? t.change_given : undefined,
+            timestamp: t.created_at,
+          };
+        });
+        setTransactions(mapped);
+        setCurrentShift((prev) => ({
+          ...prev,
+          sales: mapped.reduce((sum, t) => sum + t.total, 0),
+          transactionCount: mapped.length,
+        }));
+      }
+    }
+    loadTransactions();
+  }, []);
 
   // Load products from database
   useEffect(() => {
@@ -133,32 +226,34 @@ export default function POSPage() {
     loadProducts();
   }, []);
 
-  // Handle completed transaction
-  const handleTransactionComplete = async (transaction: Transaction) => {
-    // Add to local transactions
-    setTransactions((prev) => [...prev, transaction]);
+  // Handle completed transaction (DB save already happens inside POSCart)
+  const handleTransactionComplete = (transaction: any) => {
+    const primaryPayment = (transaction.payments as any[])?.[0];
 
-    // Update shift stats
+    const mapped: Transaction = {
+      id: transaction.id,
+      items: (transaction.items as any[]).map((item) => ({
+        id: item.id,
+        name: item.name,
+        sku: item.sku ?? "",
+        quantity: item.quantity,
+        price: item.price,
+      })),
+      subtotal: transaction.subtotal,
+      tax: transaction.tax ?? 0,
+      total: transaction.total,
+      paymentMethod: primaryPayment?.method ?? "cash",
+      cashReceived: transaction.cashReceived,
+      change: transaction.change,
+      timestamp: transaction.timestamp,
+    };
+
+    setTransactions((prev) => [...prev, mapped]);
     setCurrentShift((prev) => ({
       ...prev,
-      sales: prev.sales + transaction.total,
+      sales: prev.sales + mapped.total,
       transactionCount: prev.transactionCount + 1,
     }));
-
-    // TODO: Save transaction to database
-    try {
-      const supabase = createClient();
-
-      // In a real implementation, you would:
-      // 1. Create POS transaction record
-      // 2. Create transaction items
-      // 3. Update product stock quantities
-      // 4. Update staff shift totals
-
-      console.log("Transaction completed:", transaction);
-    } catch (error) {
-      console.error("Error saving transaction:", error);
-    }
   };
 
   // Handle receipt printing
@@ -261,16 +356,25 @@ export default function POSPage() {
   }
 
   return (
-    <div className="h-screen overflow-hidden">
+    <div className="h-screen flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="border-b bg-background p-4">
+      <div className="border-b bg-background px-3 py-2 sm:p-4 shrink-0">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
+            <Link
+              href="/admin"
+              className="flex items-center justify-center h-9 w-9 rounded-lg border bg-background hover:bg-muted transition-colors shrink-0"
+              title="Back to Admin"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
             <div className="flex items-center gap-2">
-              <Store className="h-6 w-6" />
+              <Store className="hidden sm:block h-6 w-6 shrink-0" />
               <div>
-                <h1 className="text-xl font-bold">Point of Sale</h1>
-                <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                <h1 className="text-base sm:text-xl font-bold leading-tight">
+                  Point of Sale
+                </h1>
+                <div className="hidden sm:flex items-center gap-4 text-sm text-muted-foreground">
                   <div className="flex items-center gap-1">
                     <Clock className="h-3 w-3" />
                     Shift:{" "}
@@ -281,52 +385,75 @@ export default function POSPage() {
                     Sales: {formatCurrency(todaySales)}
                   </div>
                 </div>
+                {/* Mobile: compact stats inline */}
+                <div className="flex sm:hidden items-center gap-2 text-xs text-muted-foreground">
+                  <span>{formatCurrency(todaySales)}</span>
+                  <span>·</span>
+                  <span>{currentShift.transactionCount} txn</span>
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="flex gap-2">
-            <Card className="p-3">
-              <div className="text-center">
-                <div className="text-lg font-bold">
-                  {currentShift.transactionCount}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  Transactions
-                </div>
-              </div>
-            </Card>
-            <Card className="p-3">
-              <div className="text-center">
-                <div className="text-lg font-bold">
-                  {formatCurrency(averageTransaction)}
-                </div>
-                <div className="text-xs text-muted-foreground">Avg Sale</div>
-              </div>
-            </Card>
+          <div className="flex items-center gap-2">
+            <POSRefundModal />
+            <button
+              onClick={toggleFullscreen}
+              title={isFullscreen ? "Exit fullscreen" : "Maximize screen"}
+              className="hidden sm:flex items-center justify-center h-10 w-10 rounded-lg border bg-background hover:bg-muted transition-colors"
+            >
+              {isFullscreen ? (
+                <Minimize2 className="h-4 w-4" />
+              ) : (
+                <Maximize2 className="h-4 w-4" />
+              )}
+            </button>
           </div>
         </div>
       </div>
 
       {/* Main Content */}
-      <div className="h-[calc(100vh-80px)]">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full">
-          <TabsList className="grid w-full grid-cols-3 max-w-lg mx-auto mt-4">
-            <TabsTrigger value="pos" className="flex items-center gap-2">
+      <div className="flex-1 min-h-0 flex flex-col">
+        <Tabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          className="flex-1 min-h-0 flex flex-col"
+        >
+          <TabsList className="shrink-0 grid w-full grid-cols-4 max-w-2xl mx-auto mt-2 sm:mt-4 px-2 sm:px-0">
+            <TabsTrigger
+              value="pos"
+              className="flex items-center gap-1 sm:gap-2"
+            >
               <ShoppingCart className="h-4 w-4" />
-              Point of Sale
+              <span className="hidden sm:inline">Point of Sale</span>
             </TabsTrigger>
-            <TabsTrigger value="parked" className="flex items-center gap-2">
+            <TabsTrigger
+              value="parked"
+              className="flex items-center gap-1 sm:gap-2"
+            >
               <ParkingSquare className="h-4 w-4" />
-              Parked Orders
+              <span className="hidden sm:inline">Parked</span>
             </TabsTrigger>
-            <TabsTrigger value="history" className="flex items-center gap-2">
+            <TabsTrigger
+              value="history"
+              className="flex items-center gap-1 sm:gap-2"
+            >
               <History className="h-4 w-4" />
-              History
+              <span className="hidden sm:inline">History</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="refunds"
+              className="flex items-center gap-1 sm:gap-2"
+            >
+              <RotateCcw className="h-4 w-4" />
+              <span className="hidden sm:inline">Refunds</span>
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="pos" className="h-full mt-4">
+          <TabsContent
+            value="pos"
+            className="flex-1 min-h-0 mt-0 data-[state=active]:flex data-[state=active]:flex-col"
+          >
             <POSCart
               products={products}
               onTransactionComplete={handleTransactionComplete}
@@ -335,15 +462,28 @@ export default function POSPage() {
             />
           </TabsContent>
 
-          <TabsContent value="parked" className="h-full mt-4 p-6">
+          <TabsContent
+            value="parked"
+            className="flex-1 min-h-0 mt-0 overflow-auto p-4 sm:p-6"
+          >
             <ParkedOrdersPanel onRestoreOrder={handleRestoreParkedOrder} />
           </TabsContent>
 
-          <TabsContent value="history" className="h-full mt-4 p-6">
+          <TabsContent
+            value="history"
+            className="flex-1 min-h-0 mt-0 overflow-auto p-4 sm:p-6"
+          >
             <TransactionHistory
               transactions={transactions}
               onPrintReceipt={handlePrintReceipt}
             />
+          </TabsContent>
+
+          <TabsContent
+            value="refunds"
+            className="flex-1 min-h-0 mt-0 overflow-auto p-4 sm:p-6"
+          >
+            <POSRefund />
           </TabsContent>
         </Tabs>
       </div>

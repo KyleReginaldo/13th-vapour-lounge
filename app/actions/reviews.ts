@@ -146,6 +146,7 @@ export const getProductReviews = withErrorHandling(
         { count: "exact" }
       )
       .eq("product_id", productId)
+      .eq("is_approved", true)
       .eq("is_hidden", false)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
@@ -154,11 +155,12 @@ export const getProductReviews = withErrorHandling(
       return error("Failed to fetch reviews", ErrorCode.SERVER_ERROR);
     }
 
-    // Calculate average rating
+    // Calculate average rating (approved, visible reviews only)
     const { data: stats } = await supabase
       .from("product_reviews")
       .select("rating")
       .eq("product_id", productId)
+      .eq("is_approved", true)
       .eq("is_hidden", false);
 
     const avgRating =

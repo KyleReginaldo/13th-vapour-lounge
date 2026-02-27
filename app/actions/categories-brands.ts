@@ -96,9 +96,24 @@ export const updateCategory = withErrorHandling(
         : undefined,
     };
 
+    // Map camelCase input to snake_case DB columns (only include defined fields)
+    const updateData: Record<string, unknown> = {};
+    if (sanitized.name !== undefined) updateData.name = sanitized.name;
+    if (sanitized.slug !== undefined) updateData.slug = sanitized.slug;
+    if (sanitized.description !== undefined)
+      updateData.description = sanitized.description;
+    if (sanitized.parentId !== undefined)
+      updateData.parent_id = sanitized.parentId;
+    if (sanitized.imageUrl !== undefined)
+      updateData.image_url = sanitized.imageUrl;
+    if (sanitized.sortOrder !== undefined)
+      updateData.sort_order = sanitized.sortOrder;
+    if (sanitized.isActive !== undefined)
+      updateData.is_active = sanitized.isActive;
+
     const { data, error: updateError } = await supabase
       .from("categories")
-      .update(sanitized)
+      .update(updateData)
       .eq("id", categoryId)
       .select()
       .single();

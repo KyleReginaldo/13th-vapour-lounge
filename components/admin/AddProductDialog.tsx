@@ -1,6 +1,6 @@
 "use client";
 
-import { getBrands } from "@/app/actions/categories-brands";
+import { getBrands, getCategories } from "@/app/actions/categories-brands";
 import { createProductVariant } from "@/app/actions/product-variants";
 import { createProduct } from "@/app/actions/products";
 import { ImageUpload } from "@/components/shared/ImageUpload";
@@ -22,6 +22,9 @@ export function AddProductDialog({ isOpen, onClose }: AddProductDialogProps) {
   const [slug, setSlug] = useState("");
   const [qrCode, setQrCode] = useState("");
   const [brands, setBrands] = useState<Array<{ id: string; name: string }>>([]);
+  const [categories, setCategories] = useState<
+    Array<{ id: string; name: string }>
+  >([]);
 
   // Spec / attributes state
   const [vapeType, setVapeType] = useState("");
@@ -31,15 +34,19 @@ export function AddProductDialog({ isOpen, onClose }: AddProductDialogProps) {
   const [specPgvg, setSpecPgvg] = useState("");
   const [specCoil, setSpecCoil] = useState("");
 
-  // Fetch brands on mount
+  // Fetch brands and categories on mount
   useEffect(() => {
-    async function loadBrands() {
-      const result = await getBrands();
-      if (result.success && result.data) {
-        setBrands(result.data);
-      }
+    async function loadData() {
+      const [brandsResult, categoriesResult] = await Promise.all([
+        getBrands(),
+        getCategories(),
+      ]);
+      if (brandsResult.success && brandsResult.data)
+        setBrands(brandsResult.data);
+      if (categoriesResult.success && categoriesResult.data)
+        setCategories(categoriesResult.data);
     }
-    loadBrands();
+    loadData();
   }, []);
 
   // Auto-generate slug and QR code from product name
@@ -255,12 +262,11 @@ export function AddProductDialog({ isOpen, onClose }: AddProductDialogProps) {
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
                   >
                     <option value="">Select category</option>
-                    <option value="Vape Devices">Vape Devices</option>
-                    <option value="E-Liquids">E-Liquids</option>
-                    <option value="Coils">Coils</option>
-                    <option value="Accessories">Accessories</option>
-                    <option value="Pods">Pods</option>
-                    <option value="Batteries">Batteries</option>
+                    {categories.map((cat) => (
+                      <option key={cat.id} value={cat.name}>
+                        {cat.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
 

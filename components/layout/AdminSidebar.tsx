@@ -4,6 +4,7 @@ import { useSidebarStore } from "@/lib/stores/sidebar-store";
 import { cn } from "@/lib/utils";
 import {
   BuildingStorefrontIcon,
+  CalendarDaysIcon,
   ChartBarIcon,
   ClipboardDocumentListIcon,
   ClockIcon,
@@ -16,6 +17,7 @@ import {
   ShieldCheckIcon,
   ShoppingBagIcon,
   ShoppingCartIcon,
+  TagIcon,
   UsersIcon,
 } from "@heroicons/react/24/outline";
 import Image from "next/image";
@@ -24,13 +26,18 @@ import { usePathname } from "next/navigation";
 const navigation = [
   {
     name: "Dashboard",
-    href: "/admin",
+    href: "/admin/",
     icon: HomeIcon,
   },
   {
     name: "Products",
     href: "/admin/products",
     icon: ShoppingBagIcon,
+  },
+  {
+    name: "Categories",
+    href: "/admin/categories",
+    icon: TagIcon,
   },
   {
     name: "Inventory",
@@ -83,6 +90,11 @@ const navigation = [
     icon: UsersIcon,
   },
   {
+    name: "Shifts",
+    href: "/admin/shifts",
+    icon: CalendarDaysIcon,
+  },
+  {
     name: "Users",
     href: "/admin/users",
     icon: UsersIcon,
@@ -101,6 +113,11 @@ const navigation = [
     name: "Settings",
     href: "/admin/settings",
     icon: Cog6ToothIcon,
+  },
+  {
+    name: "Policies",
+    href: "/admin/policies",
+    icon: DocumentTextIcon,
   },
 ];
 

@@ -4,6 +4,16 @@ import {
   submitContactForm,
   type ContactFormState,
 } from "@/app/actions/contact";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { AlertCircle, CheckCircle2, Loader2, Send } from "lucide-react";
 import { useState } from "react";
 
@@ -49,69 +59,59 @@ export function ContactForm() {
     }
   };
 
-  const inputCls =
-    "w-full h-11 px-4 text-[14px] rounded-xl border border-[#E8E8E8] bg-white placeholder:text-[#CDCDCD] outline-none focus:border-[#0A0A0A] transition-all";
-
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-1.5">
-          <label className="text-[12px] font-semibold text-[#0A0A0A] uppercase tracking-wide">
-            Your Name
-          </label>
-          <input
+          <Label>Your Name</Label>
+          <Input
             value={form.name}
             onChange={set("name")}
             placeholder="Juan dela Cruz"
             required
-            className={inputCls}
           />
         </div>
         <div className="space-y-1.5">
-          <label className="text-[12px] font-semibold text-[#0A0A0A] uppercase tracking-wide">
-            Email Address
-          </label>
-          <input
+          <Label>Email Address</Label>
+          <Input
             type="email"
             value={form.email}
             onChange={set("email")}
             placeholder="juan@example.com"
             required
-            className={inputCls}
           />
         </div>
       </div>
 
       <div className="space-y-1.5">
-        <label className="text-[12px] font-semibold text-[#0A0A0A] uppercase tracking-wide">
-          Subject
-        </label>
-        <select
+        <Label>Subject</Label>
+        <Select
           value={form.subject}
-          onChange={set("subject")}
+          onValueChange={(value) => setForm((f) => ({ ...f, subject: value }))}
           required
-          className={`${inputCls} cursor-pointer`}
         >
-          <option value="">Select a topic…</option>
-          {SUBJECTS.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger>
+            <SelectValue placeholder="Select a topic…" />
+          </SelectTrigger>
+          <SelectContent>
+            {SUBJECTS.map((s) => (
+              <SelectItem key={s} value={s}>
+                {s}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="space-y-1.5">
-        <label className="text-[12px] font-semibold text-[#0A0A0A] uppercase tracking-wide">
-          Message
-        </label>
-        <textarea
+        <Label>Message</Label>
+        <Textarea
           value={form.message}
           onChange={set("message")}
           placeholder="Write your message here…"
           required
           rows={5}
-          className="w-full px-4 py-3 text-[14px] rounded-xl border border-[#E8E8E8] bg-white placeholder:text-[#CDCDCD] outline-none focus:border-[#0A0A0A] transition-all resize-none"
+          className="resize-none"
         />
       </div>
 

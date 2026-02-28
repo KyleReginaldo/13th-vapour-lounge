@@ -10,6 +10,10 @@ import {
 } from "@/lib/actions/utils";
 import { logAudit } from "@/lib/auth/audit";
 import { requireRole } from "@/lib/auth/roles";
+import {
+  CASH_DIFF_THRESHOLD,
+  NOTIF_TYPES,
+} from "@/lib/constants/notifications";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import {
@@ -22,6 +26,7 @@ import {
   type StaffMemberInput,
 } from "@/lib/validations/staff";
 import { revalidatePath } from "next/cache";
+import { notifyAdminAndActiveStaff } from "./notifications";
 
 /**
  * Create staff member
@@ -68,6 +73,13 @@ export const createStaffMember = withErrorHandling(
       entityType: "user",
       entityId: authData.user.id,
       newValue: { email: validated.email, role_id: validated.role_id },
+    });
+
+    await notifyAdminAndActiveStaff({
+      title: `New Staff: ${validated.first_name} ${validated.last_name}`,
+      message: `${validated.first_name} ${validated.last_name} (${validated.email}) has been added as a staff member.`,
+      type: NOTIF_TYPES.STAFF_CREATED,
+      link: "/admin/staff",
     });
 
     revalidatePath("/admin/staff");
@@ -125,6 +137,15 @@ export const changeStaffRole = withErrorHandling(
       newValue: { role_id: roleId },
     });
 
+    await notifyAdminAndActiveStaff({
+      title:
+        `Role Changed: ${(data as any).first_name ?? ""} ${(data as any).last_name ?? ""}`.trim(),
+      message:
+        `${(data as any).first_name ?? "Staff"} ${(data as any).last_name ?? ""}'s role has been updated.`.trim(),
+      type: NOTIF_TYPES.ROLE_CHANGED,
+      link: "/admin/staff",
+    });
+
     revalidatePath("/admin/staff");
     return success(data, "Staff role updated");
   }
@@ -165,6 +186,20 @@ export const clockIn = withErrorHandling(
 
     if (insertError) return error(insertError.message);
 
+    // Notify admins (fire-and-forget)
+    const staffName =
+      `${user.first_name ?? ""} ${user.last_name ?? ""}`.trim() || user.email;
+    const clockInTime = new Date().toLocaleString("en-PH", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+    await notifyAdminAndActiveStaff({
+      title: `${staffName} Clocked In`,
+      message: `${staffName} started their shift at ${clockInTime}.`,
+      type: NOTIF_TYPES.CLOCK_IN,
+      link: "/admin/shifts",
+    });
+
     revalidatePath("/admin/staff");
     revalidatePath("/admin/shifts");
     return success(shift, "Clocked in successfully");
@@ -176,7 +211,7 @@ export const clockIn = withErrorHandling(
  */
 export const clockOut = withErrorHandling(
   async (input: ClockOutInput): Promise<ActionResponse> => {
-    await requireRole(["admin", "staff"]);
+    const user = await requireRole(["admin", "staff"]);
     const validated = validateInput(clockOutSchema, input);
     const supabase = await createClient();
 
@@ -223,6 +258,40 @@ export const clockOut = withErrorHandling(
       .single();
 
     if (updateError) return error(updateError.message);
+
+    // Notify about clock-out (fire-and-forget)
+    const staffName =
+      `${user.first_name ?? ""} ${user.last_name ?? ""}`.trim() || user.email;
+    const shiftDate = shift.clock_in
+      ? new Date(shift.clock_in).toLocaleString("en-PH", {
+          dateStyle: "medium",
+          timeStyle: "short",
+        })
+      : "unknown";
+    const clockOutTime = new Date().toLocaleString("en-PH", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+    await notifyAdminAndActiveStaff({
+      title: `${staffName} Clocked Out`,
+      message: `${staffName} ended their shift (started: ${shiftDate}, clocked out: ${clockOutTime}).`,
+      type: NOTIF_TYPES.CLOCK_OUT,
+      link: "/admin/shifts",
+    });
+
+    // Extra notification for significant cash discrepancy
+    if (Math.abs(cashDifference) > CASH_DIFF_THRESHOLD) {
+      const diffLabel =
+        cashDifference > 0
+          ? `+₱${Math.abs(cashDifference).toFixed(2)} overage`
+          : `-₱${Math.abs(cashDifference).toFixed(2)} shortage`;
+      await notifyAdminAndActiveStaff({
+        title: `⚠️ Cash Discrepancy — ${staffName}`,
+        message: `${staffName}'s shift closed with a ${diffLabel}. Please review the shift report.`,
+        type: NOTIF_TYPES.CASH_DISCREPANCY,
+        link: `/admin/shifts`,
+      });
+    }
 
     revalidatePath("/admin/staff");
     revalidatePath("/admin/shifts");

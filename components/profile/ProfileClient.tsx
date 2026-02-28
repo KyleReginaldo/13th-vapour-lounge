@@ -33,8 +33,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { IconInput } from "@/components/ui/icon-input";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 import {
   Sheet,
   SheetContent,
@@ -55,7 +57,6 @@ import {
   ImagePlus,
   KeyRound,
   Loader2,
-  Lock,
   Mail,
   Package,
   Phone,
@@ -83,6 +84,50 @@ import {
 import { useFormStatus } from "react-dom";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
+
+/**
+ * Compress an image file client-side using the Canvas API before upload.
+ * PDFs and non-image files are returned unchanged.
+ * Falls back to the original file on any error.
+ */
+async function compressImage(
+  file: File,
+  maxWidth = 1600,
+  quality = 0.75
+): Promise<File> {
+  if (!file.type.startsWith("image/")) return file;
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxWidth / img.width);
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext("2d")!.drawImage(img, 0, 0, w, h);
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) return resolve(file);
+            resolve(
+              new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), {
+                type: "image/jpeg",
+              })
+            );
+          },
+          "image/jpeg",
+          quality
+        );
+      };
+      img.onerror = () => resolve(file);
+      img.src = ev.target!.result as string;
+    };
+    reader.onerror = () => resolve(file);
+    reader.readAsDataURL(file);
+  });
+}
 
 const STATUS_STYLES: Record<string, string> = {
   pending: "bg-yellow-50 text-yellow-700 border-yellow-200",
@@ -996,10 +1041,6 @@ function OrdersTab({ orders }: { orders: ProfileOrder[] }) {
 // ── Settings Tab ─────────────────────────────────────────────────────────────
 
 function SettingsTab({ user }: { user: UserWithRole }) {
-  const [showNewPw, setShowNewPw] = useState(false);
-  const inputCls =
-    "h-10 text-[14px] rounded-xl border-[1.5px] border-[#E8E8E8] bg-white placeholder:text-[#CDCDCD] focus-visible:border-[#0A0A0A] focus-visible:ring-0 focus-visible:shadow-[0_0_0_3px_rgba(10,10,10,0.06)] transition-all";
-
   // Two-step password change state
   const [requestState, requestAction] = useActionState<
     PasswordChangeState,
@@ -1083,8 +1124,9 @@ function SettingsTab({ user }: { user: UserWithRole }) {
       if (!selectedFile || !consentTerms || !consentPrivacy) return;
       setAgeVerifSubmitting(true);
       setAgeVerifError(null);
+      const fileToUpload = await compressImage(selectedFile);
       const fd = new FormData();
-      fd.append("idDocument", selectedFile);
+      fd.append("idDocument", fileToUpload);
       fd.append("consentToTerms", "true");
       fd.append("consentToPrivacy", "true");
       const result = await submitAgeVerification(fd);
@@ -1125,88 +1167,64 @@ function SettingsTab({ user }: { user: UserWithRole }) {
         <form action={updateProfile} className="p-6 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label
-                htmlFor="firstName"
-                className="text-[13px] font-medium text-[#3D3D3D]"
-              >
-                First Name
-              </Label>
+              <Label htmlFor="firstName">First Name</Label>
               <Input
                 id="firstName"
                 name="firstName"
                 defaultValue={user.first_name}
                 required
                 readOnly
-                className={cn(inputCls, "bg-[#F9F9F9] cursor-not-allowed")}
+                placeholder="First name"
+                className="bg-[#F9F9F9] cursor-not-allowed"
               />
             </div>
             <div className="space-y-1.5">
-              <Label
-                htmlFor="lastName"
-                className="text-[13px] font-medium text-[#3D3D3D]"
-              >
-                Last Name
-              </Label>
+              <Label htmlFor="lastName">Last Name</Label>
               <Input
                 id="lastName"
                 name="lastName"
                 defaultValue={user.last_name}
                 required
                 readOnly
-                className={cn(inputCls, "bg-[#F9F9F9] cursor-not-allowed")}
+                placeholder="Last name"
+                className="bg-[#F9F9F9] cursor-not-allowed"
               />
             </div>
             <div className="space-y-1.5">
-              <Label
-                htmlFor="middleName"
-                className="text-[13px] font-medium text-[#3D3D3D]"
-              >
-                Middle Name
-              </Label>
+              <Label htmlFor="middleName">Middle Name</Label>
               <Input
                 id="middleName"
                 name="middleName"
                 defaultValue={user.middle_name ?? ""}
                 readOnly
-                className={cn(inputCls, "bg-[#F9F9F9] cursor-not-allowed")}
+                placeholder="Middle name"
+                className="bg-[#F9F9F9] cursor-not-allowed"
               />
             </div>
             <div className="space-y-1.5">
-              <Label
-                htmlFor="suffix"
-                className="text-[13px] font-medium text-[#3D3D3D]"
-              >
-                Suffix
-              </Label>
+              <Label htmlFor="suffix">Suffix</Label>
               <Input
                 id="suffix"
                 name="suffix"
                 defaultValue={user.suffix ?? ""}
                 placeholder="Jr., Sr., III"
                 readOnly
-                className={cn(inputCls, "bg-[#F9F9F9] cursor-not-allowed")}
+                className="bg-[#F9F9F9] cursor-not-allowed"
               />
             </div>
             <p className="text-[11px] text-[#ADADAD] -mt-2 sm:col-span-2">
               Name fields are locked to match your verification ID.
             </p>
             <div className="space-y-1.5 sm:col-span-2">
-              <Label
-                htmlFor="contactNumber"
-                className="text-[13px] font-medium text-[#3D3D3D]"
-              >
-                Contact Number
-              </Label>
-              <div className="relative">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#ADADAD]" />
-                <Input
-                  id="contactNumber"
-                  name="contactNumber"
-                  defaultValue={user.contact_number}
-                  required
-                  className={cn(inputCls, "pl-9")}
-                />
-              </div>
+              <Label htmlFor="contactNumber">Contact Number</Label>
+              <IconInput
+                icon={Phone}
+                id="contactNumber"
+                name="contactNumber"
+                defaultValue={user.contact_number}
+                required
+                placeholder="+63 9XX XXX XXXX"
+              />
             </div>
           </div>
           <div className="pt-2 flex justify-end">
@@ -1247,48 +1265,23 @@ function SettingsTab({ user }: { user: UserWithRole }) {
               </div>
             )}
             <div className="space-y-1.5">
-              <Label
-                htmlFor="newPassword"
-                className="text-[13px] font-medium text-[#3D3D3D]"
-              >
-                New Password
-              </Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#ADADAD]" />
-                <Input
-                  id="newPassword"
-                  name="newPassword"
-                  type={showNewPw ? "text" : "password"}
-                  minLength={6}
-                  required
-                  className={cn(inputCls, "pl-9 pr-10")}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowNewPw(!showNewPw)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#ADADAD] hover:text-[#3D3D3D] transition-colors text-xs"
-                >
-                  {showNewPw ? "Hide" : "Show"}
-                </button>
-              </div>
+              <Label htmlFor="newPassword">New Password</Label>
+              <PasswordInput
+                id="newPassword"
+                name="newPassword"
+                minLength={6}
+                required
+                placeholder="Min. 8 characters"
+              />
             </div>
             <div className="space-y-1.5">
-              <Label
-                htmlFor="confirmPassword"
-                className="text-[13px] font-medium text-[#3D3D3D]"
-              >
-                Confirm New Password
-              </Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#ADADAD]" />
-                <Input
-                  id="confirmPassword"
-                  name="confirmPassword"
-                  type="password"
-                  required
-                  className={cn(inputCls, "pl-9")}
-                />
-              </div>
+              <Label htmlFor="confirmPassword">Confirm New Password</Label>
+              <PasswordInput
+                id="confirmPassword"
+                name="confirmPassword"
+                required
+                placeholder="Repeat your password"
+              />
             </div>
             <div className="pt-2 flex justify-end">
               <SaveButton label="Send Verification Code" />
@@ -1324,9 +1317,7 @@ function SettingsTab({ user }: { user: UserWithRole }) {
               <input type="hidden" name="otp" value={otpDigits.join("")} />
 
               <div className="space-y-2">
-                <Label className="text-[13px] font-medium text-[#3D3D3D]">
-                  Verification Code
-                </Label>
+                <Label>Verification Code</Label>
                 <div className="flex gap-2" onPaste={handleOtpDigitPaste}>
                   {otpDigits.map((digit, i) => (
                     <input

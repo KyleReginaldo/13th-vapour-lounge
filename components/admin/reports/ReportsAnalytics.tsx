@@ -8,6 +8,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -176,19 +177,17 @@ export function ReportsAnalytics() {
 
           {period === "custom" && (
             <div className="flex items-center gap-2">
-              <input
+              <Input
                 type="date"
                 value={customFrom}
                 onChange={(e) => setCustomFrom(e.target.value)}
-                className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
               />
               <span className="text-sm text-muted-foreground">to</span>
-              <input
+              <Input
                 type="date"
                 value={customTo}
                 min={customFrom}
                 onChange={(e) => setCustomTo(e.target.value)}
-                className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
               />
             </div>
           )}

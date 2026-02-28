@@ -18,21 +18,218 @@ import {
 } from "@/lib/email/templates";
 import { sendEmail as sendEmailTransport } from "@/lib/email/transport";
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
-/**
- * Email configuration types
- */
-type EmailTemplate =
-  | "order_confirmation"
-  | "payment_verified"
-  | "order_ready"
-  | "order_completed"
-  | "return_approved"
-  | "return_rejected"
-  | "age_verification_approved"
-  | "age_verification_rejected"
-  | "low_stock_alert"
-  | "welcome";
+function getServiceClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  if (!url || !key) {
+    throw new Error(
+      `[notify] Missing env vars: SUPABASE_URL=${!!url} SERVICE_KEY=${!!key}`
+    );
+  }
+  return createSupabaseClient(url, key, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Internal helper: notify admin users + any currently clocked-in staff
+// ---------------------------------------------------------------------------
+export async function notifyAdminAndActiveStaff(params: {
+  title: string;
+  message: string;
+  type: string;
+  link?: string;
+  /** If provided, read the settings table and send email only when the toggle is on */
+  emailSettingKey?:
+    | "email_order_notifications"
+    | "email_low_stock_notifications"
+    | "email_payment_notifications";
+  /** HTML email to send (only used when emailSettingKey is provided) */
+  emailHtml?: string;
+  emailSubject?: string;
+}): Promise<void> {
+  console.log("[notify:start] notifyAdminAndActiveStaff type=", params.type);
+  try {
+    const supabase = getServiceClient();
+
+    // 1. Resolve admin role ID, then fetch admin users directly (avoids join-filter issues)
+    const { data: adminRole } = await supabase
+      .from("roles")
+      .select("id")
+      .eq("name", "admin")
+      .maybeSingle();
+
+    const { data: adminUsers, error: adminErr } = adminRole
+      ? await supabase
+          .from("users")
+          .select("id, email")
+          .eq("role_id", adminRole.id)
+      : { data: [], error: null };
+
+    if (adminErr) console.error("[notify] adminUsers query error:", adminErr);
+
+    // 2. Collect clocked-in staff IDs (no clock_out yet)
+    const { data: activeShifts } = await supabase
+      .from("staff_shifts")
+      .select("staff_id")
+      .is("clock_out", null);
+
+    // 3. Fetch emails for clocked-in staff
+    const activeStaffIds = (activeShifts ?? [])
+      .map((s) => s.staff_id)
+      .filter((id): id is string => !!id);
+
+    const { data: activeStaff } =
+      activeStaffIds.length > 0
+        ? await supabase
+            .from("users")
+            .select("id, email")
+            .in("id", activeStaffIds)
+        : { data: [] };
+
+    // Build deduplicated recipient map id → email
+    const recipientMap = new Map<string, string>();
+    for (const u of adminUsers ?? []) {
+      if (u.id) recipientMap.set(u.id, u.email ?? "");
+    }
+    for (const u of activeStaff ?? []) {
+      if (u.id) recipientMap.set(u.id, u.email ?? "");
+    }
+
+    console.log(
+      `[notify] recipients: ${recipientMap.size} (admins: ${adminUsers?.length ?? 0}, active staff: ${activeStaffIds.length})`
+    );
+
+    if (recipientMap.size === 0) return;
+
+    // 4. Bulk-insert in-app notifications
+    const inserts = Array.from(recipientMap.keys()).map((userId) => ({
+      user_id: userId,
+      title: params.title,
+      message: params.message,
+      type: params.type,
+      link: params.link ?? null,
+    }));
+    const { error: insertErr } = await supabase
+      .from("notifications")
+      .insert(inserts);
+
+    if (insertErr) console.error("[notify] insert error:", insertErr);
+
+    // 5. Optionally send email (respects settings toggle)
+    if (params.emailSettingKey && params.emailHtml && params.emailSubject) {
+      // shop_settings is a key-value table: { key: string, value: Json }
+      const { data: settingRow } = await supabase
+        .from("shop_settings")
+        .select("value")
+        .eq("key", params.emailSettingKey)
+        .maybeSingle();
+
+      // if no row found, treat as enabled (default on)
+      const toggleOn = settingRow == null || settingRow.value !== false;
+
+      if (toggleOn) {
+        for (const email of recipientMap.values()) {
+          if (email) {
+            await sendEmailTransport({
+              to: email,
+              subject: params.emailSubject,
+              html: params.emailHtml,
+            });
+          }
+        }
+      }
+    }
+  } catch (err) {
+    // fire-and-forget — never block the primary operation
+    console.error(
+      "[notifyAdminAndActiveStaff] FAILED:",
+      (err as Error)?.message,
+      err
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Internal helper: notify only admin users (use when a staff member acts)
+// ---------------------------------------------------------------------------
+export async function notifyAdminsOnly(params: {
+  title: string;
+  message: string;
+  type: string;
+  link?: string;
+}): Promise<void> {
+  console.log("[notify:start] notifyAdminsOnly type=", params.type);
+  try {
+    const supabase = getServiceClient();
+    const { data: adminRole } = await supabase
+      .from("roles")
+      .select("id")
+      .eq("name", "admin")
+      .maybeSingle();
+    const { data: adminUsers } = adminRole
+      ? await supabase.from("users").select("id").eq("role_id", adminRole.id)
+      : { data: [] };
+    if (!adminUsers || adminUsers.length === 0) return;
+    const inserts = adminUsers.map((u) => ({
+      user_id: u.id,
+      title: params.title,
+      message: params.message,
+      type: params.type,
+      link: params.link ?? null,
+    }));
+    const { error: insertErr } = await supabase
+      .from("notifications")
+      .insert(inserts);
+    if (insertErr) console.error("[notifyAdminsOnly] insert error:", insertErr);
+  } catch (err) {
+    console.error("[notifyAdminsOnly] FAILED:", (err as Error)?.message, err);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Internal helper: notify only currently clocked-in staff
+// (use when an admin acts on something staff should know about)
+// ---------------------------------------------------------------------------
+export async function notifyActiveStaffOnly(params: {
+  title: string;
+  message: string;
+  type: string;
+  link?: string;
+}): Promise<void> {
+  console.log("[notify:start] notifyActiveStaffOnly type=", params.type);
+  try {
+    const supabase = getServiceClient();
+    const { data: activeShifts } = await supabase
+      .from("staff_shifts")
+      .select("staff_id")
+      .is("clock_out", null);
+    const activeStaffIds = (activeShifts ?? [])
+      .map((s) => s.staff_id)
+      .filter((id): id is string => !!id);
+    if (activeStaffIds.length === 0) return;
+    const inserts = activeStaffIds.map((userId) => ({
+      user_id: userId,
+      title: params.title,
+      message: params.message,
+      type: params.type,
+      link: params.link ?? null,
+    }));
+    const { error: insertErr } = await supabase
+      .from("notifications")
+      .insert(inserts);
+    if (insertErr)
+      console.error("[notifyActiveStaffOnly] insert error:", insertErr);
+  } catch (err) {
+    console.error(
+      "[notifyActiveStaffOnly] FAILED:",
+      (err as Error)?.message,
+      err
+    );
+  }
+}
 
 interface EmailData {
   to: string;
@@ -103,7 +300,7 @@ export const sendOrderConfirmationEmail = withErrorHandling(
       `${order.users.first_name || ""} ${order.users.last_name || ""}`.trim() ||
       "Customer";
 
-    const items = order.order_items.map((item: any) => ({
+    const items = order.order_items.map((item) => ({
       name: item.products.name,
       quantity: item.quantity,
       price: item.unit_price * item.quantity,
@@ -361,11 +558,11 @@ export const sendLowStockAlert = withErrorHandling(
       return error("No admin users found", ErrorCode.NOT_FOUND);
     }
 
-    const productsData = products.map((p: any) => ({
-      name: p.name,
-      sku: p.sku,
-      currentStock: p.stock_quantity,
-      threshold: p.low_stock_threshold || 10,
+    const productsData = products.map((py) => ({
+      name: py.name,
+      sku: py.sku,
+      currentStock: py.stock_quantity ?? 0,
+      threshold: py.low_stock_threshold || 10,
     }));
 
     const html = lowStockAlertTemplate({ products: productsData });
@@ -533,29 +730,22 @@ export const checkAndCreateStockNotifications = withErrorHandling(
     const { data: adminUsers } = await supabase
       .from("users")
       .select("id, roles!inner(name)")
-      .in("roles.name", ["admin", "staff"]);
+      .or("roles.name.eq.admin,roles.name.eq.staff");
 
     if (!adminUsers || adminUsers.length === 0)
       return success(null, "No admin users to notify");
 
-    const adminIds = adminUsers.map((u: any) => u.id);
+    const adminIds = adminUsers.map((u) => u.id);
 
-    // Fetch products with stock data including expiry
+    // Fetch products with stock data
     const { data: products } = await supabase
       .from("products")
-      .select(
-        "id, name, slug, stock_quantity, low_stock_threshold, expiry_date"
-      )
+      .select("id, name, slug, stock_quantity, low_stock_threshold")
       .eq("is_active", true);
 
     if (!products) return success(null, "No products found");
 
     // For each admin, gather existing unread notifications to avoid duplicates
-    const now = new Date();
-    const thirtyDaysFromNow = new Date(
-      now.getTime() + 30 * 24 * 60 * 60 * 1000
-    );
-
     const inserts: {
       user_id: string;
       title: string;
@@ -564,19 +754,15 @@ export const checkAndCreateStockNotifications = withErrorHandling(
       link: string;
     }[] = [];
 
-    for (const product of products as any[]) {
+    for (const product of products) {
       const qty = product.stock_quantity ?? 0;
       const threshold = product.low_stock_threshold ?? 10;
       const criticalThreshold = Math.ceil(threshold * 0.3); // 30% of threshold = critical
       const productLink = `/admin/inventory`;
 
       // Determine notification type
-      let notifType:
-        | "low_stock"
-        | "out_of_stock"
-        | "critical_stock"
-        | "expiring_stock"
-        | null = null;
+      let notifType: "low_stock" | "out_of_stock" | "critical_stock" | null =
+        null;
 
       if (qty === 0) {
         notifType = "out_of_stock";
@@ -584,45 +770,6 @@ export const checkAndCreateStockNotifications = withErrorHandling(
         notifType = "critical_stock";
       } else if (qty <= threshold) {
         notifType = "low_stock";
-      }
-
-      // Check expiry (within 30 days)
-      if (product.expiry_date) {
-        const expiry = new Date(product.expiry_date);
-        if (expiry <= thirtyDaysFromNow && expiry >= now) {
-          const formattedExpiry = expiry.toLocaleDateString("en-PH", {
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-          });
-
-          for (const adminId of adminIds) {
-            // Check for existing unread expiry notification for this product
-            const { count } = await supabase
-              .from("notifications")
-              .select("id", { count: "exact", head: true })
-              .eq("user_id", adminId)
-              .eq("type", "expiring_stock")
-              .eq("is_read", false)
-              .like("title", `%${product.name}%`);
-
-            if (!count || count === 0) {
-              const { title, message } = buildStockNotification(
-                "expiring_stock",
-                product.name,
-                undefined,
-                formattedExpiry
-              );
-              inserts.push({
-                user_id: adminId,
-                title,
-                message,
-                type: "expiring_stock",
-                link: productLink,
-              });
-            }
-          }
-        }
       }
 
       if (notifType) {
@@ -661,5 +808,49 @@ export const checkAndCreateStockNotifications = withErrorHandling(
       { created: inserts.length },
       `${inserts.length} notifications created`
     );
+  }
+);
+
+/**
+ * Paginated notifications list for the admin /notifications page
+ */
+export const getAdminNotifications = withErrorHandling(
+  async (params?: {
+    page?: number;
+    pageSize?: number;
+    type?: string;
+    isRead?: boolean;
+    startDate?: string;
+    endDate?: string;
+  }): Promise<ActionResponse> => {
+    await requireRole(["admin", "staff"]);
+    const supabase = await createClient();
+
+    const page = params?.page ?? 1;
+    const pageSize = params?.pageSize ?? 25;
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    const { data: currentUser } = await supabase.auth.getUser();
+    if (!currentUser.user) return error("Unauthorized", ErrorCode.UNAUTHORIZED);
+
+    let query = supabase
+      .from("notifications")
+      .select("*", { count: "exact" })
+      .eq("user_id", currentUser.user.id)
+      .order("created_at", { ascending: false })
+      .range(from, to);
+
+    if (params?.type) query = query.eq("type", params.type);
+    if (params?.isRead !== undefined)
+      query = query.eq("is_read", params.isRead);
+    if (params?.startDate) query = query.gte("created_at", params.startDate);
+    if (params?.endDate) query = query.lte("created_at", params.endDate);
+
+    const { data, error: fetchError, count } = await query;
+
+    if (fetchError) return error(fetchError.message);
+
+    return success({ notifications: data, total: count ?? 0, page, pageSize });
   }
 );

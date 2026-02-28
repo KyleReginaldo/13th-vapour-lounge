@@ -1,7 +1,6 @@
 "use client";
 
 import { updateShopSettings } from "@/app/actions/settings";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -10,6 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { IconInput } from "@/components/ui/icon-input";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -37,6 +37,7 @@ import { toast } from "sonner";
 import { BusinessHoursManager } from "./BusinessHoursManager";
 import { FeatureToggles } from "./FeatureToggles";
 import { LegalDocumentsManager } from "./LegalDocumentsManager";
+import { SecuritySettings } from "./SecuritySettings";
 
 interface SettingsPageProps {
   initialSettings: Record<string, any>;
@@ -185,43 +186,38 @@ export function SettingsPage({ initialSettings }: SettingsPageProps) {
                     id="shopName"
                     value={shopName}
                     onChange={(e) => setShopName(e.target.value)}
+                    placeholder="Your Shop Name"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="shopEmail">Contact Email</Label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="shopEmail"
-                      className="pl-10"
-                      value={shopEmail}
-                      onChange={(e) => setShopEmail(e.target.value)}
-                    />
-                  </div>
+                  <IconInput
+                    icon={Mail}
+                    id="shopEmail"
+                    value={shopEmail}
+                    onChange={(e) => setShopEmail(e.target.value)}
+                    placeholder="shop@example.com"
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="shopPhone">Contact Phone</Label>
-                  <div className="relative">
-                    <Phone className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="shopPhone"
-                      className="pl-10"
-                      value={shopPhone}
-                      onChange={(e) => setShopPhone(e.target.value)}
-                    />
-                  </div>
+                  <IconInput
+                    icon={Phone}
+                    id="shopPhone"
+                    value={shopPhone}
+                    onChange={(e) => setShopPhone(e.target.value)}
+                    placeholder="+63 9XX XXX XXXX"
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="shopAddress">Address</Label>
-                  <div className="relative">
-                    <MapPin className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="shopAddress"
-                      className="pl-10"
-                      value={shopAddress}
-                      onChange={(e) => setShopAddress(e.target.value)}
-                    />
-                  </div>
+                  <IconInput
+                    icon={MapPin}
+                    id="shopAddress"
+                    value={shopAddress}
+                    onChange={(e) => setShopAddress(e.target.value)}
+                    placeholder="123 Street, City"
+                  />
                 </div>
               </div>
 
@@ -244,6 +240,7 @@ export function SettingsPage({ initialSettings }: SettingsPageProps) {
                     type="number"
                     value={taxRate}
                     onChange={(e) => setTaxRate(e.target.value)}
+                    placeholder="12"
                   />
                 </div>
               </div>
@@ -275,6 +272,7 @@ export function SettingsPage({ initialSettings }: SettingsPageProps) {
                     min="0"
                     value={shippingFee}
                     onChange={(e) => setShippingFee(e.target.value)}
+                    placeholder="0.00"
                   />
                   <p className="text-xs text-muted-foreground">
                     Charged on every online order
@@ -290,6 +288,7 @@ export function SettingsPage({ initialSettings }: SettingsPageProps) {
                     min="0"
                     value={freeShippingThreshold}
                     onChange={(e) => setFreeShippingThreshold(e.target.value)}
+                    placeholder="0"
                   />
                   <p className="text-xs text-muted-foreground">
                     Set to 0 to always charge shipping
@@ -350,6 +349,7 @@ export function SettingsPage({ initialSettings }: SettingsPageProps) {
                       <Input
                         value={gcashNumber}
                         onChange={(e) => setGcashNumber(e.target.value)}
+                        placeholder="09XXXXXXXXX"
                       />
                     </div>
                   )}
@@ -378,6 +378,7 @@ export function SettingsPage({ initialSettings }: SettingsPageProps) {
                       <Input
                         value={mayaNumber}
                         onChange={(e) => setMayaNumber(e.target.value)}
+                        placeholder="09XXXXXXXXX"
                       />
                     </div>
                   )}
@@ -409,6 +410,7 @@ export function SettingsPage({ initialSettings }: SettingsPageProps) {
                         <Input
                           value={bankName}
                           onChange={(e) => setBankName(e.target.value)}
+                          placeholder="e.g., BDO, BPI"
                         />
                       </div>
                       <div>
@@ -416,6 +418,7 @@ export function SettingsPage({ initialSettings }: SettingsPageProps) {
                         <Input
                           value={bankAccountNumber}
                           onChange={(e) => setBankAccountNumber(e.target.value)}
+                          placeholder="Account number"
                         />
                       </div>
                       <div>
@@ -423,6 +426,7 @@ export function SettingsPage({ initialSettings }: SettingsPageProps) {
                         <Input
                           value={bankAccountName}
                           onChange={(e) => setBankAccountName(e.target.value)}
+                          placeholder="Account holder name"
                         />
                       </div>
                     </div>
@@ -529,6 +533,7 @@ export function SettingsPage({ initialSettings }: SettingsPageProps) {
                       value={lowStockThreshold}
                       onChange={(e) => setLowStockThreshold(e.target.value)}
                       className="w-32"
+                      placeholder="10"
                     />
                     <span className="text-sm text-muted-foreground">units</span>
                   </div>
@@ -548,69 +553,7 @@ export function SettingsPage({ initialSettings }: SettingsPageProps) {
 
         {/* Security Settings */}
         <TabsContent value="security">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Shield className="h-5 w-5" /> Security & Access
-              </CardTitle>
-              <CardDescription>
-                Manage security settings for your store
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-4">
-                <div className="border rounded-lg p-4">
-                  <div className="font-medium mb-1">Change Password</div>
-                  <div className="text-sm text-muted-foreground mb-3">
-                    Update your admin account password
-                  </div>
-                  <div className="space-y-3">
-                    <div>
-                      <Label>Current Password</Label>
-                      <Input type="password" placeholder="••••••••" />
-                    </div>
-                    <div>
-                      <Label>New Password</Label>
-                      <Input type="password" placeholder="••••••••" />
-                    </div>
-                    <div>
-                      <Label>Confirm Password</Label>
-                      <Input type="password" placeholder="••••••••" />
-                    </div>
-                    <Button>Update Password</Button>
-                  </div>
-                </div>
-
-                <div className="border rounded-lg p-4">
-                  <div className="font-medium mb-1">
-                    Two-Factor Authentication
-                  </div>
-                  <div className="text-sm text-muted-foreground mb-3">
-                    Add an extra layer of security to your account
-                  </div>
-                  <Button variant="outline">Enable 2FA</Button>
-                </div>
-
-                <div className="border rounded-lg p-4">
-                  <div className="font-medium mb-1">Active Sessions</div>
-                  <div className="text-sm text-muted-foreground mb-3">
-                    Manage devices logged into your account
-                  </div>
-                  <div className="text-sm p-3 bg-muted rounded">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <div className="font-medium">Current Session</div>
-                        <div className="text-muted-foreground">
-                          macOS · Chrome
-                        </div>
-                      </div>
-                      <Badge variant="default">Active</Badge>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <SecuritySettings />
         </TabsContent>
       </Tabs>
     </div>

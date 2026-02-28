@@ -1,16 +1,14 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 import { signIn } from "@/lib/auth/supabase-auth";
 import {
   AlertCircle,
   CheckCircle2,
-  Eye,
-  EyeOff,
   Loader2,
-  Lock,
   Mail,
   ShieldCheck,
   Star,
@@ -46,7 +44,6 @@ function SignInForm() {
   const searchParams = useSearchParams();
   const error = searchParams.get("error");
   const message = searchParams.get("message");
-  const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [email, setEmail] = useState("");
 
@@ -117,37 +114,24 @@ function SignInForm() {
             <form className="space-y-5" action={signIn} onSubmit={handleSubmit}>
               {/* Email */}
               <div className="space-y-1.5">
-                <Label
-                  htmlFor="email"
-                  className="text-[13px] font-medium text-[#3D3D3D]"
-                >
-                  Email address
-                </Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-[15px] w-[15px] text-[#ADADAD]" />
-                  <Input
-                    id="email"
-                    name="email"
-                    type="email"
-                    autoComplete="email"
-                    required
-                    placeholder="you@example.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="h-11 pl-9 pr-4 text-[14px] rounded-xl border-[1.5px] border-[#E8E8E8] bg-white placeholder:text-[#CDCDCD] focus-visible:border-[#0A0A0A] focus-visible:ring-0 focus-visible:shadow-[0_0_0_3px_rgba(10,10,10,0.06)] transition-all"
-                  />
-                </div>
+                <Label htmlFor="email">Email address</Label>
+                <IconInput
+                  icon={Mail}
+                  id="email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
               </div>
 
               {/* Password */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <Label
-                    htmlFor="password"
-                    className="text-[13px] font-medium text-[#3D3D3D]"
-                  >
-                    Password
-                  </Label>
+                  <Label htmlFor="password">Password</Label>
                   <Link
                     href="/forgot-password"
                     className="text-[12px] text-[#8A8A8A] hover:text-[#0A0A0A] transition-colors"
@@ -155,29 +139,13 @@ function SignInForm() {
                     Forgot password?
                   </Link>
                 </div>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-[15px] w-[15px] text-[#ADADAD]" />
-                  <Input
-                    id="password"
-                    name="password"
-                    type={showPassword ? "text" : "password"}
-                    autoComplete="current-password"
-                    required
-                    placeholder="Enter your password"
-                    className="h-11 pl-9 pr-10 text-[14px] rounded-xl border-[1.5px] border-[#E8E8E8] bg-white placeholder:text-[#CDCDCD] focus-visible:border-[#0A0A0A] focus-visible:ring-0 focus-visible:shadow-[0_0_0_3px_rgba(10,10,10,0.06)] transition-all"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#ADADAD] hover:text-[#3D3D3D] transition-colors"
-                  >
-                    {showPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </button>
-                </div>
+                <PasswordInput
+                  id="password"
+                  name="password"
+                  autoComplete="current-password"
+                  required
+                  placeholder="Enter your password"
+                />
               </div>
 
               {/* Remember me */}

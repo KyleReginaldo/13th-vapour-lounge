@@ -94,7 +94,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
 
         {/* Product Info & Actions */}
         <div className="space-y-6">
-          <ProductInfo product={product} />
+          <ProductInfo product={product} hidePrice={!!product.has_variants} />
 
           {/* Client-side interactive components (variants, quantity, add to cart) */}
           <ProductDetailClient

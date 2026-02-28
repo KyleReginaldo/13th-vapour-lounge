@@ -12,7 +12,7 @@ import {
   withErrorHandling,
 } from "@/lib/actions/utils";
 import { logAudit } from "@/lib/auth/audit";
-import { requireRole } from "@/lib/auth/roles";
+import { requireClockedIn, requireRole } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
 import {
   approveReturnSchema,
@@ -66,7 +66,7 @@ export const getReturns = withErrorHandling(
  */
 export const approveReturn = withErrorHandling(
   async (returnId: string, refundAmount: number): Promise<ActionResponse> => {
-    const user = await requireRole(["admin", "staff"]);
+    const user = await requireClockedIn();
     const validated = validateInput(approveReturnSchema, {
       return_id: returnId,
       refund_amount: refundAmount,
@@ -104,7 +104,7 @@ export const approveReturn = withErrorHandling(
  */
 export const rejectReturn = withErrorHandling(
   async (returnId: string, reason: string): Promise<ActionResponse> => {
-    const user = await requireRole(["admin", "staff"]);
+    const user = await requireClockedIn();
     const validated = validateInput(rejectReturnSchema, {
       return_id: returnId,
       reason,
@@ -141,7 +141,7 @@ export const rejectReturn = withErrorHandling(
  */
 export const completeReturn = withErrorHandling(
   async (returnId: string): Promise<ActionResponse> => {
-    await requireRole(["admin", "staff"]);
+    await requireClockedIn();
     const supabase = await createClient();
 
     const { data: returnData, error: updateError } = await supabase
@@ -175,7 +175,7 @@ export const completeReturn = withErrorHandling(
  */
 export const restockReturnedItem = withErrorHandling(
   async (returnId: string, quantity: number): Promise<ActionResponse> => {
-    const user = await requireRole(["admin", "staff"]);
+    const user = await requireClockedIn();
     const validated = validateInput(restockReturnSchema, {
       return_id: returnId,
       quantity,

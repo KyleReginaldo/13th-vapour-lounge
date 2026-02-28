@@ -8,7 +8,7 @@ import {
   type ActionResponse,
 } from "@/lib/actions/utils";
 import { logAudit } from "@/lib/auth/audit";
-import { requireRole } from "@/lib/auth/roles";
+import { requireClockedIn, requireRole } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -54,7 +54,7 @@ export const createProductVariant = withErrorHandling(
   async (
     input: z.infer<typeof createVariantSchema>
   ): Promise<ActionResponse> => {
-    const admin = await requireRole(["admin", "staff"]);
+    const admin = await requireClockedIn();
     const supabase = await createClient();
 
     const validated = createVariantSchema.parse(input);
@@ -131,7 +131,7 @@ export const updateProductVariant = withErrorHandling(
   async (
     input: z.infer<typeof updateVariantSchema>
   ): Promise<ActionResponse> => {
-    const admin = await requireRole(["admin", "staff"]);
+    const admin = await requireClockedIn();
     const supabase = await createClient();
 
     const validated = updateVariantSchema.parse(input);
@@ -139,7 +139,7 @@ export const updateProductVariant = withErrorHandling(
     // Get existing variant
     const { data: existing, error: fetchError } = await supabase
       .from("product_variants")
-      .select("product_id, sku")
+      .select("product_id, sku, price")
       .eq("id", validated.variantId)
       .single();
 
@@ -192,6 +192,30 @@ export const updateProductVariant = withErrorHandling(
 
     revalidatePath(`/admin/products/${existing.product_id}`);
     revalidatePath("/admin/products");
+    revalidatePath("/cart"); // Refresh cart to pick up new prices
+
+    // Notify if price changed
+    const priceChanged =
+      validated.price !== undefined && validated.price !== existing.price;
+    if (priceChanged) {
+      const { notifyAdminsOnly, notifyActiveStaffOnly } =
+        await import("./notifications");
+      const { NOTIF_TYPES } = await import("@/lib/constants/notifications");
+      const _actorName =
+        `${admin.first_name ?? ""} ${admin.last_name ?? ""}`.trim() ||
+        admin.email ||
+        "Staff";
+
+      const isStaff = admin.roles?.name !== "admin";
+      const notifyFn = isStaff ? notifyAdminsOnly : notifyActiveStaffOnly;
+
+      await notifyFn({
+        title: `Variant Price Changed`,
+        message: `${_actorName} changed a variant's price to ₱${validated.price}.`,
+        type: NOTIF_TYPES.PRODUCT_UPDATED,
+        link: `/admin/products/${existing.product_id}`,
+      });
+    }
 
     return success(variant, "Variant updated successfully");
   }
@@ -328,7 +352,7 @@ export const bulkUpdateVariantStock = withErrorHandling(
       operation: "set" | "add" | "subtract";
     }>
   ): Promise<ActionResponse> => {
-    const admin = await requireRole(["admin", "staff"]);
+    const admin = await requireClockedIn();
     const supabase = await createClient();
 
     const results = [];
@@ -399,7 +423,7 @@ export const bulkUpdateVariantStock = withErrorHandling(
  */
 export const enableProductVariants = withErrorHandling(
   async (productId: string): Promise<ActionResponse> => {
-    const admin = await requireRole(["admin", "staff"]);
+    const admin = await requireClockedIn();
     const supabase = await createClient();
 
     const { error: updateError } = await supabase

@@ -7,10 +7,14 @@ import {
   withErrorHandling,
   type ActionResponse,
 } from "@/lib/actions/utils";
+import { NOTIF_TYPES } from "@/lib/constants/notifications";
+import { adminNewOrderTemplate } from "@/lib/email/templates";
 import { createClient } from "@/lib/supabase/server";
 import { sanitizeOrderInput } from "@/lib/validations/sanitize";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { notifyAdminAndActiveStaff } from "./notifications";
+import { getPublicShippingSettings } from "./settings";
 
 const checkoutSchema = z.object({
   shippingAddressId: z.string().uuid(),
@@ -101,7 +105,15 @@ export const createOrderFromCart = withErrorHandling(
       return sum + price * item.quantity;
     }, 0);
     const tax = subtotal * taxRate;
-    const total = subtotal + tax;
+
+    // Get shipping settings
+    const shippingResult = await getPublicShippingSettings();
+    const shippingFee = shippingResult?.data?.shipping_fee ?? 50;
+    const freeThreshold = shippingResult?.data?.free_shipping_threshold ?? 0;
+    const shippingCost =
+      freeThreshold > 0 && subtotal >= freeThreshold ? 0 : shippingFee;
+
+    const total = subtotal + tax + shippingCost;
 
     // Generate order number using database function
     const { data: orderNumberData } = await supabase.rpc(
@@ -121,7 +133,7 @@ export const createOrderFromCart = withErrorHandling(
         subtotal,
         tax,
         total,
-        shipping_cost: 0,
+        shipping_cost: shippingCost,
         discount: 0,
         shipping_address_id: address.id,
         shipping_full_name: address.full_name,
@@ -207,6 +219,24 @@ export const createOrderFromCart = withErrorHandling(
 
     revalidatePath("/cart");
     revalidatePath("/orders");
+
+    // Notify admin + clocked-in staff about the new order
+    const customerName = `${user.email}`;
+    await notifyAdminAndActiveStaff({
+      title: `New Order ${order.order_number}`,
+      message: `A new order of ₱${total.toFixed(2)} (${cartItems.length} item${cartItems.length !== 1 ? "s" : ""}) has been placed.`,
+      type: NOTIF_TYPES.NEW_ORDER,
+      link: `/admin/orders?order=${order.order_number}`,
+      emailSettingKey: "email_order_notifications",
+      emailSubject: `New Order ${order.order_number} — ₱${total.toFixed(2)}`,
+      emailHtml: adminNewOrderTemplate({
+        orderNumber: order.order_number,
+        customerName,
+        total,
+        itemCount: cartItems.length,
+        orderUrl: `${process.env.NEXT_PUBLIC_BASE_URL ?? ""}/admin/orders?order=${order.order_number}`,
+      }),
+    });
 
     return success(
       { orderId: order.id, orderNumber: order.order_number },

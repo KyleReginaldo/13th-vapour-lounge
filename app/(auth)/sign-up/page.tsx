@@ -2,8 +2,10 @@
 
 import { LegalAcceptModal } from "@/components/shared/LegalModal";
 import { Button } from "@/components/ui/button";
+import { IconInput } from "@/components/ui/icon-input";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { signUp } from "@/lib/auth/supabase-auth";
 import {
   AlertCircle,
@@ -15,7 +17,6 @@ import {
   Loader2,
   Lock,
   Mail,
-  Phone,
   ShieldCheck,
   User,
 } from "lucide-react";
@@ -81,13 +82,17 @@ function SignUpForm() {
     if (privacyCheckRef.current) privacyCheckRef.current.checked = true;
   }
 
-  const [stepOneData, setStepOneData] = useState({
-    firstName: "",
-    lastName: "",
-    middleName: "",
-    suffix: "",
-    contactNumber: "",
-    dateOfBirth: "",
+  const [stepOneData, setStepOneData] = useState(() => {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() - 18);
+    return {
+      firstName: "",
+      lastName: "",
+      middleName: "",
+      suffix: "",
+      contactNumber: "",
+      dateOfBirth: d.toISOString().split("T")[0],
+    };
   });
   const [stepTwoData, setStepTwoData] = useState({
     email: "",
@@ -96,17 +101,9 @@ function SignUpForm() {
 
   const formRef = useRef<HTMLFormElement>(null);
 
-  const inputCls =
-    "h-11 text-[14px] rounded-xl border-[1.5px] border-[#E8E8E8] bg-white placeholder:text-[#CDCDCD] focus-visible:border-[#0A0A0A] focus-visible:ring-0 focus-visible:shadow-[0_0_0_3px_rgba(10,10,10,0.06)] transition-all";
-
   const readField = (name: string) =>
     (formRef.current?.elements.namedItem(name) as HTMLInputElement)?.value ??
     "";
-
-  const handleContactChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const digitsOnly = e.target.value.replace(/\D/g, "");
-    setContactValue(digitsOnly.slice(0, 10));
-  };
 
   const handleContinueStep1 = () => {
     const firstName = readField("firstName");
@@ -204,7 +201,7 @@ function SignUpForm() {
       </div>
 
       <div className="flex-1 flex items-center justify-center p-6 sm:p-8">
-        <div className="w-full max-w-[440px]">
+        <div className="w-full max-w-110">
           <div className="bg-white rounded-2xl border border-[#EBEBEB] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-8 sm:p-10">
             <div className="mb-7">
               <div className="flex items-center justify-between mb-1.5">
@@ -292,126 +289,87 @@ function SignUpForm() {
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
-                      <Label
-                        htmlFor="firstName"
-                        className="text-[13px] font-medium text-[#3D3D3D]"
-                      >
+                      <Label htmlFor="firstName">
                         First name <span className="text-red-400">*</span>
                       </Label>
-                      <div className="relative">
-                        <User className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#ADADAD]" />
-                        <Input
-                          id="firstName"
-                          name="firstName"
-                          type="text"
-                          placeholder="John"
-                          defaultValue={stepOneData.firstName}
-                          className={`${inputCls} pl-9`}
-                        />
-                      </div>
+                      <IconInput
+                        icon={User}
+                        id="firstName"
+                        name="firstName"
+                        type="text"
+                        placeholder="John"
+                        defaultValue={stepOneData.firstName}
+                      />
                     </div>
                     <div className="space-y-1.5">
-                      <Label
-                        htmlFor="lastName"
-                        className="text-[13px] font-medium text-[#3D3D3D]"
-                      >
+                      <Label htmlFor="lastName">
                         Last name <span className="text-red-400">*</span>
                       </Label>
-                      <div className="relative">
-                        <User className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#ADADAD]" />
-                        <Input
-                          id="lastName"
-                          name="lastName"
-                          type="text"
-                          placeholder="Doe"
-                          defaultValue={stepOneData.lastName}
-                          className={`${inputCls} pl-9`}
-                        />
-                      </div>
+                      <IconInput
+                        icon={User}
+                        id="lastName"
+                        name="lastName"
+                        type="text"
+                        placeholder="Doe"
+                        defaultValue={stepOneData.lastName}
+                      />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
-                      <Label
-                        htmlFor="middleName"
-                        className="text-[13px] font-medium text-[#3D3D3D]"
-                      >
-                        Middle name
-                      </Label>
+                      <Label htmlFor="middleName">Middle name</Label>
                       <Input
                         id="middleName"
                         name="middleName"
                         type="text"
                         placeholder="Optional"
                         defaultValue={stepOneData.middleName}
-                        className={`${inputCls} px-4`}
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <Label
-                        htmlFor="suffix"
-                        className="text-[13px] font-medium text-[#3D3D3D]"
-                      >
-                        Suffix
-                      </Label>
+                      <Label htmlFor="suffix">Suffix</Label>
                       <Input
                         id="suffix"
                         name="suffix"
                         type="text"
                         placeholder="Jr., Sr."
                         defaultValue={stepOneData.suffix}
-                        className={`${inputCls} px-4`}
                       />
                     </div>
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label
-                      htmlFor="contactNumber"
-                      className="text-[13px] font-medium text-[#3D3D3D]"
-                    >
+                    <Label htmlFor="contactNumber">
                       Contact number <span className="text-red-400">*</span>
                     </Label>
-                    <div className="flex items-center rounded-xl border-[1.5px] border-[#E8E8E8] bg-white overflow-hidden focus-within:border-[#0A0A0A] focus-within:shadow-[0_0_0_3px_rgba(10,10,10,0.06)] transition-all">
-                      <span className="pl-3 pr-2 text-[14px] text-[#3D3D3D] font-medium shrink-0 border-r border-[#E8E8E8] py-2.5">
-                        <Phone className="inline h-3.5 w-3.5 text-[#ADADAD] mr-1" />
-                        +63
-                      </span>
-                      <input
-                        id="contactNumber"
-                        name="contactNumberDisplay"
-                        type="tel"
-                        inputMode="numeric"
-                        placeholder="9XXXXXXXXX"
-                        value={contactValue}
-                        onChange={handleContactChange}
-                        maxLength={10}
-                        className="flex-1 h-11 px-3 text-[14px] bg-transparent outline-none placeholder:text-[#CDCDCD]"
-                      />
-                    </div>
+                    <PhoneInput
+                      id="contactNumber"
+                      name="contactNumberDisplay"
+                      value={contactValue}
+                      onChange={(digits) => setContactValue(digits)}
+                    />
                     <p className="text-[11px] text-[#ADADAD]">
                       Must start with 9 — max 10 digits (e.g., 9171234567)
                     </p>
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label
-                      htmlFor="dateOfBirth"
-                      className="text-[13px] font-medium text-[#3D3D3D]"
-                    >
+                    <Label htmlFor="dateOfBirth">
                       Date of birth <span className="text-red-400">*</span>
                     </Label>
-                    <div className="relative">
-                      <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#ADADAD] pointer-events-none" />
-                      <Input
-                        id="dateOfBirth"
-                        name="dateOfBirth"
-                        type="date"
-                        defaultValue={stepOneData.dateOfBirth}
-                        className={`${inputCls} pl-9`}
-                      />
-                    </div>
+                    <IconInput
+                      icon={Calendar}
+                      id="dateOfBirth"
+                      name="dateOfBirth"
+                      type="date"
+                      defaultValue={stepOneData.dateOfBirth}
+                      max={(() => {
+                        const d = new Date();
+                        d.setFullYear(d.getFullYear() - 18);
+                        return d.toISOString().split("T")[0];
+                      })()}
+                    />
                     <p className="text-[11px] text-[#ADADAD]">
                       You must be 18 years or older
                     </p>
@@ -423,39 +381,30 @@ function SignUpForm() {
               {currentStep === 2 && (
                 <div className="space-y-4">
                   <div className="space-y-1.5">
-                    <Label
-                      htmlFor="email"
-                      className="text-[13px] font-medium text-[#3D3D3D]"
-                    >
+                    <Label htmlFor="email">
                       Email address <span className="text-red-400">*</span>
                     </Label>
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#ADADAD]" />
-                      <Input
-                        id="email"
-                        name="email"
-                        type="email"
-                        autoComplete="email"
-                        placeholder="you@gmail.com"
-                        defaultValue={stepTwoData.email}
-                        className={`${inputCls} pl-9`}
-                        style={{ textTransform: "lowercase" }}
-                      />
-                    </div>
+                    <IconInput
+                      icon={Mail}
+                      id="email"
+                      name="email"
+                      type="email"
+                      autoComplete="email"
+                      placeholder="you@gmail.com"
+                      defaultValue={stepTwoData.email}
+                      style={{ textTransform: "lowercase" }}
+                    />
                     <p className="text-[11px] text-[#ADADAD]">
                       Only @gmail.com and @yahoo.com are accepted
                     </p>
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label
-                      htmlFor="password"
-                      className="text-[13px] font-medium text-[#3D3D3D]"
-                    >
+                    <Label htmlFor="password">
                       Password <span className="text-red-400">*</span>
                     </Label>
                     <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#ADADAD]" />
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#ADADAD] pointer-events-none" />
                       <Input
                         id="password"
                         name="password"
@@ -465,7 +414,7 @@ function SignUpForm() {
                         placeholder="Min 8 chars, uppercase, lowercase, special"
                         value={passwordValue}
                         onChange={(e) => setPasswordValue(e.target.value)}
-                        className={`${inputCls} pl-9 pr-10`}
+                        className="pl-9 pr-10"
                       />
                       <button
                         type="button"
@@ -805,9 +754,9 @@ export default function SignUpPage() {
     <div className="min-h-screen flex">
       <div className="hidden lg:flex lg:w-[52%] xl:w-[55%] relative bg-[#0A0A0A] flex-col overflow-hidden">
         <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute -top-40 -left-40 w-[600px] h-[600px] rounded-full bg-white/[0.02] blur-3xl" />
-          <div className="absolute top-1/2 -translate-y-1/2 -right-24 w-[450px] h-[450px] rounded-full bg-white/[0.03] blur-3xl" />
-          <div className="absolute bottom-10 left-1/4 w-[300px] h-[300px] rounded-full bg-white/[0.02] blur-2xl" />
+          <div className="absolute -top-40 -left-40 w-150 h-150 rounded-full bg-white/2 blur-3xl" />
+          <div className="absolute top-1/2 -translate-y-1/2 -right-24 w-112.5 h-112.5 rounded-full bg-white/3 blur-3xl" />
+          <div className="absolute bottom-10 left-1/4 w-75 h-75 rounded-full bg-white/2 blur-2xl" />
         </div>
         <div
           className="absolute inset-0 opacity-[0.03] pointer-events-none"
@@ -832,7 +781,7 @@ export default function SignUpPage() {
           </Link>
           <div className="flex-1 flex flex-col justify-center max-w-sm">
             <div className="mb-10">
-              <div className="inline-flex items-center gap-2 bg-white/[0.06] border border-white/[0.08] rounded-full px-3 py-1 mb-6">
+              <div className="inline-flex items-center gap-2 bg-white/6 border border-white/8 rounded-full px-3 py-1 mb-6">
                 <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
                 <span className="text-[12px] text-white/60 font-medium tracking-wide uppercase">
                   Join our community
@@ -867,7 +816,7 @@ export default function SignUpPage() {
                 },
               ].map(({ icon: Icon, label, sub }) => (
                 <div key={label} className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-white/[0.06] border border-white/[0.08] flex items-center justify-center shrink-0">
+                  <div className="w-9 h-9 rounded-lg bg-white/6 border border-white/8 flex items-center justify-center shrink-0">
                     <Icon className="w-4 h-4 text-white/70" />
                   </div>
                   <div>

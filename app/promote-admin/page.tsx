@@ -1,4 +1,13 @@
 import { changeUserRole, promoteToAdmin } from "@/app/actions/users";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export default async function PromoteAdminPage({
   searchParams,
@@ -42,19 +51,14 @@ export default async function PromoteAdminPage({
         <h2 className="text-xl font-semibold mb-4">Promote User to Admin</h2>
         <form action="" method="get" className="space-y-4">
           <div>
-            <label
-              htmlFor="email"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              User Email
-            </label>
-            <input
+            <Label htmlFor="email">User Email</Label>
+            <Input
               type="email"
               name="email"
               id="email"
               required
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
               placeholder="user@example.com"
+              className="mt-1"
             />
           </div>
           <button
@@ -70,39 +74,28 @@ export default async function PromoteAdminPage({
         <h2 className="text-xl font-semibold mb-4">Change User Role</h2>
         <form action="" method="get" className="space-y-4">
           <div>
-            <label
-              htmlFor="email2"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              User Email
-            </label>
-            <input
+            <Label htmlFor="email2">User Email</Label>
+            <Input
               type="email"
               name="email"
               id="email2"
               required
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
               placeholder="user@example.com"
+              className="mt-1"
             />
           </div>
           <div>
-            <label
-              htmlFor="role"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              New Role
-            </label>
-            <select
-              name="role"
-              id="role"
-              required
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-            >
-              <option value="">Select a role</option>
-              <option value="admin">Admin</option>
-              <option value="staff">Staff</option>
-              <option value="customer">Customer</option>
-            </select>
+            <Label htmlFor="role">New Role</Label>
+            <Select name="role" required>
+              <SelectTrigger className="mt-1">
+                <SelectValue placeholder="Select a role" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="admin">Admin</SelectItem>
+                <SelectItem value="staff">Staff</SelectItem>
+                <SelectItem value="customer">Customer</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <button
             type="submit"

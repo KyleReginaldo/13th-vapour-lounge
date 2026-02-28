@@ -1,10 +1,14 @@
 "use client";
 
 import { getBrands, getCategories } from "@/app/actions/categories-brands";
-import { createProductVariant } from "@/app/actions/product-variants";
+import {
+  createProductVariant,
+  updateProductVariant,
+} from "@/app/actions/product-variants";
 import {
   createProduct,
   deleteProduct,
+  ProductFormData,
   updateProduct,
 } from "@/app/actions/products";
 import { ImageUpload } from "@/components/shared/ImageUpload";
@@ -44,6 +48,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { IconInput } from "@/components/ui/icon-input";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -62,6 +67,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { Database } from "@/database.types";
+import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
 import {
   AlertTriangle,
@@ -69,6 +75,7 @@ import {
   Edit,
   Eye,
   Filter,
+  Info,
   MoreHorizontal,
   Package,
   Plus,
@@ -81,10 +88,27 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+type ProductVariant = {
+  id: string;
+  sku: string;
+  price: number | null;
+  stock_quantity: number | null;
+  attributes: Record<string, string>;
+  is_active: boolean | null;
+};
+
+type VariantRow = {
+  uid: string;
+  label: string;
+  price: string;
+  stock: string;
+};
+
 type Product = Database["public"]["Tables"]["products"]["Row"] & {
   brand?: { name: string } | null;
   category?: { name: string } | null;
   product_images?: { url: string }[] | null;
+  product_variants?: ProductVariant[];
 };
 
 interface ProductsManagementProps {
@@ -114,6 +138,34 @@ export function ProductsManagement({
   const [dbCategories, setDbCategories] = useState<
     Array<{ id: string; name: string }>
   >([]);
+
+  // Variant editing state
+  const [editVariants, setEditVariants] = useState<ProductVariant[]>([]);
+  const [editVariantsLoading, setEditVariantsLoading] = useState(false);
+
+  // Add-product pricing variant state
+  const [hasPricingVariants, setHasPricingVariants] = useState(false);
+  const [variantRows, setVariantRows] = useState<VariantRow[]>([
+    { uid: crypto.randomUUID(), label: "", price: "", stock: "" },
+  ]);
+
+  const addVariantRow = () =>
+    setVariantRows((prev) => [
+      ...prev,
+      { uid: crypto.randomUUID(), label: "", price: "", stock: "" },
+    ]);
+
+  const removeVariantRow = (uid: string) =>
+    setVariantRows((prev) => prev.filter((r) => r.uid !== uid));
+
+  const updateVariantRow = (
+    uid: string,
+    field: keyof Omit<VariantRow, "uid">,
+    value: string
+  ) =>
+    setVariantRows((prev) =>
+      prev.map((r) => (r.uid === uid ? { ...r, [field]: value } : r))
+    );
 
   // Spec / attributes state
   const [vapeType, setVapeType] = useState("");
@@ -209,20 +261,58 @@ export function ProductsManagement({
     if (specCoil.trim()) attributes.coil_compatibility = specCoil.trim();
     const hasAttributes = Object.keys(attributes).length > 0;
 
+    // Validate pricing variant rows if enabled
+    if (hasPricingVariants) {
+      for (const row of variantRows) {
+        if (!row.label.trim()) {
+          toast.error('Each variant must have a label (e.g. "30ml")');
+          setIsSubmitting(false);
+          return;
+        }
+        if (
+          !row.price ||
+          isNaN(parseFloat(row.price)) ||
+          parseFloat(row.price) < 0
+        ) {
+          toast.error(`Variant "${row.label}" has an invalid price`);
+          setIsSubmitting(false);
+          return;
+        }
+        if (
+          !row.stock ||
+          isNaN(parseInt(row.stock)) ||
+          parseInt(row.stock) < 0
+        ) {
+          toast.error(`Variant "${row.label}" has an invalid stock quantity`);
+          setIsSubmitting(false);
+          return;
+        }
+      }
+    }
+
+    // Compute price & quantity from variants when applicable
+    const variantPrices = variantRows.map((r) => parseFloat(r.price));
+    const basePrice = hasPricingVariants
+      ? Math.min(...variantPrices)
+      : parseFloat(formData.get("price") as string);
+    const totalStock = hasPricingVariants
+      ? variantRows.reduce((s, r) => s + parseInt(r.stock), 0)
+      : parseInt(formData.get("stock") as string);
+
     const data = {
       name: formData.get("name") as string,
       sku,
       description: (formData.get("description") as string) || undefined,
       category: formData.get("category") || "General",
       brand_id: (formData.get("brand_id") as string) || null,
-      price: parseFloat(formData.get("price") as string),
+      price: basePrice,
       compare_at_price: formData.get("compare_at_price")
         ? parseFloat(formData.get("compare_at_price") as string)
         : undefined,
       cost_price: formData.get("cost_price")
         ? parseFloat(formData.get("cost_price") as string)
         : undefined,
-      quantity: parseInt(formData.get("stock") as string),
+      quantity: totalStock,
       images: productImages,
       low_stock_threshold: formData.get("low_stock_threshold")
         ? parseInt(formData.get("low_stock_threshold") as string)
@@ -232,8 +322,8 @@ export function ProductsManagement({
         : 5,
       barcode: (formData.get("barcode") as string) || undefined,
       qr_code: qrCode || undefined,
-      product_type: hasAttributes ? "variant" : "simple",
-      has_variants: hasAttributes,
+      product_type: hasPricingVariants || hasAttributes ? "variant" : "simple",
+      has_variants: hasPricingVariants || hasAttributes,
       track_inventory: formData.get("track_inventory") === "on",
       is_published: formData.get("is_published") === "on",
       is_featured: formData.get("is_featured") === "on",
@@ -247,18 +337,35 @@ export function ProductsManagement({
       return;
     }
 
-    // If spec attributes exist, auto-create the default variant
-    if (hasAttributes && result.data?.id) {
-      const variantResult = await createProductVariant({
-        productId: result.data.id,
-        sku: `${sku}-001`,
-        attributes,
-        price: parseFloat(formData.get("price") as string),
-        stock_quantity: parseInt(formData.get("stock") as string),
-        is_active: true,
-      });
-      if (!variantResult.success) {
-        toast.warning("Product created but failed to save specifications.");
+    if (result.data?.id) {
+      if (hasPricingVariants) {
+        // Create one variant per row (with optional spec attrs merged in)
+        for (let i = 0; i < variantRows.length; i++) {
+          const row = variantRows[i];
+          const varAttrs: Record<string, string> = { size: row.label };
+          if (hasAttributes) Object.assign(varAttrs, attributes);
+          await createProductVariant({
+            productId: result.data.id,
+            sku: `${sku}-${String(i + 1).padStart(3, "0")}`,
+            attributes: varAttrs,
+            price: parseFloat(row.price),
+            stock_quantity: parseInt(row.stock),
+            is_active: true,
+          });
+        }
+      } else if (hasAttributes) {
+        // Create single default spec variant
+        const variantResult = await createProductVariant({
+          productId: result.data.id,
+          sku: `${sku}-001`,
+          attributes,
+          price: basePrice,
+          stock_quantity: totalStock,
+          is_active: true,
+        });
+        if (!variantResult.success) {
+          toast.warning("Product created but failed to save specifications.");
+        }
       }
     }
 
@@ -269,6 +376,10 @@ export function ProductsManagement({
     setProductName("");
     setSlug("");
     setQrCode("");
+    setHasPricingVariants(false);
+    setVariantRows([
+      { uid: crypto.randomUUID(), label: "", price: "", stock: "" },
+    ]);
     setVapeType("");
     setSpecFlavor("");
     setSpecVolume("");
@@ -278,10 +389,24 @@ export function ProductsManagement({
     router.refresh();
   };
 
-  const handleEditProduct = (product: Product) => {
+  const handleEditProduct = async (product: Product) => {
     setSelectedProduct(product);
     setProductImages(product.product_images?.map((img) => img.url) || []);
     setShowEditDialog(true);
+
+    if (product.has_variants) {
+      setEditVariantsLoading(true);
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("product_variants")
+        .select("id, sku, price, stock_quantity, attributes, is_active")
+        .eq("product_id", product.id)
+        .order("sort_order");
+      setEditVariants((data as ProductVariant[]) ?? []);
+      setEditVariantsLoading(false);
+    } else {
+      setEditVariants([]);
+    }
   };
 
   const handleUpdateProduct = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -290,25 +415,95 @@ export function ProductsManagement({
 
     setIsSubmitting(true);
 
+    // Read formData immediately — e.currentTarget becomes null after any await
+    const formData = new FormData(e.currentTarget);
+
+    // Common fields shared by both variant and non-variant products
+    const commonData: Record<string, any> = {
+      name: formData.get("name") as string,
+      description: (formData.get("description") as string) || null,
+      compare_at_price: formData.get("compare_at_price")
+        ? parseFloat(formData.get("compare_at_price") as string)
+        : null,
+      cost_price: formData.get("cost_price")
+        ? parseFloat(formData.get("cost_price") as string)
+        : null,
+      low_stock_threshold: formData.get("low_stock_threshold")
+        ? parseInt(formData.get("low_stock_threshold") as string)
+        : null,
+      critical_stock_threshold: formData.get("critical_stock_threshold")
+        ? parseInt(formData.get("critical_stock_threshold") as string)
+        : null,
+      barcode: (formData.get("barcode") as string) || null,
+      is_published: formData.get("is_published") === "on",
+      is_featured: formData.get("is_featured") === "on",
+      track_inventory: formData.get("track_inventory") === "on",
+      brand_id: (formData.get("brand_id") as string) || null,
+    };
+    const categoryId = formData.get("category_id") as string;
+    if (categoryId) commonData.category_id = categoryId;
+
     try {
-      const formData = new FormData(e.currentTarget);
-      const data = {
-        name: formData.get("name") as string,
-        base_price: parseFloat(formData.get("price") as string),
-        stock_quantity: parseInt(formData.get("stock") as string),
-      };
+      if (selectedProduct.has_variants && editVariants.length > 0) {
+        // Update each variant's price and stock
+        let allOk = true;
+        for (const v of editVariants) {
+          const res = await updateProductVariant({
+            variantId: v.id,
+            price: v.price ?? undefined,
+            stock_quantity: v.stock_quantity ?? undefined,
+          });
+          if (!res.success) allOk = false;
+        }
 
-      const result = await updateProduct(selectedProduct.id, data);
+        // Derive base_price from lowest variant price
+        const validPrices = editVariants
+          .filter((v) => v.price != null)
+          .map((v) => v.price!);
+        const minPrice =
+          validPrices.length > 0
+            ? Math.min(...validPrices)
+            : selectedProduct.base_price;
 
-      if (result.success) {
-        toast.success("Product updated successfully");
-        setShowEditDialog(false);
-        setSelectedProduct(null);
-        setProductImages([]);
-        router.refresh();
+        const variantUpdateData = {
+          ...commonData,
+          base_price: minPrice,
+        };
+        await updateProduct(
+          selectedProduct.id,
+          variantUpdateData as unknown as Partial<ProductFormData>
+        );
+
+        if (allOk) {
+          toast.success("Product updated successfully");
+        } else {
+          toast.warning("Some variants failed to update");
+        }
       } else {
-        toast.error(result.message || "Failed to update product");
+        const singleData = {
+          ...commonData,
+          base_price: parseFloat(formData.get("price") as string),
+          stock_quantity: parseInt(formData.get("stock") as string),
+        };
+
+        const result = await updateProduct(
+          selectedProduct.id,
+          singleData as unknown as Partial<ProductFormData>
+        );
+
+        if (result.success) {
+          toast.success("Product updated successfully");
+        } else {
+          toast.error(result.message || "Failed to update product");
+          return;
+        }
       }
+
+      setShowEditDialog(false);
+      setSelectedProduct(null);
+      setProductImages([]);
+      setEditVariants([]);
+      router.refresh();
     } catch (error) {
       console.error("Update error:", error);
       toast.error("An unexpected error occurred while updating the product");
@@ -635,62 +830,235 @@ export function ProductsManagement({
 
                 {/* Pricing */}
                 <div className="space-y-4">
-                  <h4 className="font-semibold text-sm">Pricing</h4>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="price">Price (₱) *</Label>
-                      <Input
-                        id="price"
-                        name="price"
-                        type="number"
-                        step="0.01"
-                        placeholder="0.00"
-                        required
+                  <div className="flex items-center justify-between border-b pb-2">
+                    <h4 className="font-semibold text-sm">Pricing</h4>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={hasPricingVariants}
+                        onChange={(e) =>
+                          setHasPricingVariants(e.target.checked)
+                        }
                         disabled={isSubmitting}
+                        className="w-4 h-4 rounded border-gray-300"
                       />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="compare_at_price">
-                        Compare at Price (₱)
-                      </Label>
-                      <Input
-                        id="compare_at_price"
-                        name="compare_at_price"
-                        type="number"
-                        step="0.01"
-                        placeholder="0.00"
-                        disabled={isSubmitting}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="cost_price">Cost Price (₱)</Label>
-                      <Input
-                        id="cost_price"
-                        name="cost_price"
-                        type="number"
-                        step="0.01"
-                        placeholder="0.00"
-                        disabled={isSubmitting}
-                      />
-                    </div>
+                      <span className="text-sm">
+                        Has multiple sizes / variants
+                      </span>
+                    </label>
                   </div>
+
+                  {hasPricingVariants ? (
+                    <div className="space-y-3">
+                      <p className="text-xs text-muted-foreground">
+                        Add a row per size/variant. The lowest price will be
+                        used as the product&apos;s base price.
+                      </p>
+                      <div className="rounded-md border overflow-hidden">
+                        <table className="w-full text-sm">
+                          <thead className="bg-muted/50">
+                            <tr>
+                              <th className="px-3 py-2 text-left font-medium text-muted-foreground">
+                                Label (e.g. 30ml)
+                              </th>
+                              <th className="px-3 py-2 text-left font-medium text-muted-foreground">
+                                Price (₱)
+                              </th>
+                              <th className="px-3 py-2 text-left font-medium text-muted-foreground">
+                                Stock
+                              </th>
+                              <th className="px-3 py-2 w-10" />
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {variantRows.map((row) => (
+                              <tr key={row.uid}>
+                                <td className="px-3 py-2">
+                                  <Input
+                                    value={row.label}
+                                    onChange={(e) =>
+                                      updateVariantRow(
+                                        row.uid,
+                                        "label",
+                                        e.target.value
+                                      )
+                                    }
+                                    placeholder="e.g. 30ml"
+                                    disabled={isSubmitting}
+                                    className="h-8"
+                                  />
+                                </td>
+                                <td className="px-3 py-2">
+                                  <Input
+                                    type="number"
+                                    value={row.price}
+                                    onChange={(e) =>
+                                      updateVariantRow(
+                                        row.uid,
+                                        "price",
+                                        e.target.value
+                                      )
+                                    }
+                                    placeholder="0.00"
+                                    step="0.01"
+                                    min="0"
+                                    disabled={isSubmitting}
+                                    className="h-8"
+                                  />
+                                </td>
+                                <td className="px-3 py-2">
+                                  <Input
+                                    type="number"
+                                    value={row.stock}
+                                    onChange={(e) =>
+                                      updateVariantRow(
+                                        row.uid,
+                                        "stock",
+                                        e.target.value
+                                      )
+                                    }
+                                    placeholder="0"
+                                    min="0"
+                                    disabled={isSubmitting}
+                                    className="h-8"
+                                  />
+                                </td>
+                                <td className="px-3 py-2">
+                                  {variantRows.length > 1 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => removeVariantRow(row.uid)}
+                                      className="text-red-400 hover:text-red-600 transition-colors text-lg leading-none"
+                                    >
+                                      &times;
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={addVariantRow}
+                        disabled={isSubmitting}
+                        className="text-sm text-primary hover:underline font-medium"
+                      >
+                        + Add variant
+                      </button>
+                      {/* hidden fields so form validation isn't triggered */}
+                      <input type="hidden" name="price" value="0" />
+                      <input type="hidden" name="stock" value="0" />
+                      {/* Compare at / Cost */}
+                      <div className="grid grid-cols-2 gap-4 pt-1">
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-1">
+                            <Label htmlFor="compare_at_price">
+                              Compare at Price (₱)
+                            </Label>
+                            <span className="group relative">
+                              <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                              <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-56 rounded-md bg-gray-800 px-2.5 py-1.5 text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity z-10 shadow-lg">
+                                The original &ldquo;was&rdquo; price shown
+                                crossed out next to the sale price (e.g.{" "}
+                                <span className="line-through">₱500</span>{" "}
+                                ₱350). Does not affect the actual selling price.
+                              </span>
+                            </span>
+                          </div>
+                          <Input
+                            id="compare_at_price"
+                            name="compare_at_price"
+                            type="number"
+                            step="0.01"
+                            placeholder="0.00"
+                            disabled={isSubmitting}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="cost_price">Cost Price (₱)</Label>
+                          <Input
+                            id="cost_price"
+                            name="cost_price"
+                            type="number"
+                            step="0.01"
+                            placeholder="0.00"
+                            disabled={isSubmitting}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="price">Price (₱) *</Label>
+                        <Input
+                          id="price"
+                          name="price"
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          required
+                          disabled={isSubmitting}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-1">
+                          <Label htmlFor="compare_at_price">
+                            Compare at Price (₱)
+                          </Label>
+                          <span className="group relative">
+                            <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                            <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-56 rounded-md bg-gray-800 px-2.5 py-1.5 text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity z-10 shadow-lg">
+                              The original &ldquo;was&rdquo; price shown crossed
+                              out next to the sale price (e.g.{" "}
+                              <span className="line-through">₱500</span> ₱350).
+                              Does not affect the actual selling price.
+                            </span>
+                          </span>
+                        </div>
+                        <Input
+                          id="compare_at_price"
+                          name="compare_at_price"
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          disabled={isSubmitting}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="cost_price">Cost Price (₱)</Label>
+                        <Input
+                          id="cost_price"
+                          name="cost_price"
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          disabled={isSubmitting}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Inventory */}
                 <div className="space-y-4">
                   <h4 className="font-semibold text-sm">Inventory</h4>
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="stock">Stock Quantity *</Label>
-                      <Input
-                        id="stock"
-                        name="stock"
-                        type="number"
-                        placeholder="0"
-                        required
-                        disabled={isSubmitting}
-                      />
-                    </div>
+                    {!hasPricingVariants && (
+                      <div className="space-y-2">
+                        <Label htmlFor="stock">Stock Quantity *</Label>
+                        <Input
+                          id="stock"
+                          name="stock"
+                          type="number"
+                          placeholder="0"
+                          required
+                          disabled={isSubmitting}
+                        />
+                      </div>
+                    )}
                     <div className="flex items-center pt-6">
                       <label className="flex items-center gap-2">
                         <input
@@ -713,6 +1081,7 @@ export function ProductsManagement({
                         type="number"
                         defaultValue="10"
                         disabled={isSubmitting}
+                        placeholder="10"
                       />
                     </div>
                     <div className="space-y-2">
@@ -725,6 +1094,7 @@ export function ProductsManagement({
                         type="number"
                         defaultValue="5"
                         disabled={isSubmitting}
+                        placeholder="5"
                       />
                     </div>
                   </div>
@@ -853,18 +1223,16 @@ export function ProductsManagement({
 
       {/* Search and Filters */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
-          <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search products..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
-        </div>
+        <IconInput
+          icon={Search}
+          containerClassName="flex-1 min-w-50 max-w-sm"
+          placeholder="Search products..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
 
         <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-[180px]">
+          <SelectTrigger className="w-45">
             <Filter className="mr-2 h-4 w-4" />
             <SelectValue placeholder="Category" />
           </SelectTrigger>
@@ -879,7 +1247,7 @@ export function ProductsManagement({
         </Select>
 
         <Select value={brandFilter} onValueChange={setBrandFilter}>
-          <SelectTrigger className="w-[180px]">
+          <SelectTrigger className="w-45">
             <Filter className="mr-2 h-4 w-4" />
             <SelectValue placeholder="Brand" />
           </SelectTrigger>
@@ -894,7 +1262,7 @@ export function ProductsManagement({
         </Select>
 
         <Select value={stockFilter} onValueChange={setStockFilter}>
-          <SelectTrigger className="w-[180px]">
+          <SelectTrigger className="w-45">
             <Filter className="mr-2 h-4 w-4" />
             <SelectValue placeholder="Stock Status" />
           </SelectTrigger>
@@ -963,7 +1331,26 @@ export function ProductsManagement({
                     </TableCell>
                     <TableCell>{product.brand?.name || "-"}</TableCell>
                     <TableCell>{product.category?.name || "-"}</TableCell>
-                    <TableCell>{formatCurrency(product.base_price)}</TableCell>
+                    <TableCell>
+                      {(() => {
+                        if (
+                          product.has_variants &&
+                          product.product_variants?.length
+                        ) {
+                          const prices = product.product_variants
+                            .filter((v) => v.is_active && v.price !== null)
+                            .map((v) => v.price as number);
+                          if (prices.length === 0)
+                            return formatCurrency(product.base_price);
+                          const min = Math.min(...prices);
+                          const max = Math.max(...prices);
+                          return min === max
+                            ? formatCurrency(min)
+                            : `${formatCurrency(min)} – ${formatCurrency(max)}`;
+                        }
+                        return formatCurrency(product.base_price);
+                      })()}
+                    </TableCell>
                     <TableCell>
                       <div className="font-medium">
                         {product.stock_quantity || 0}
@@ -1048,8 +1435,12 @@ export function ProductsManagement({
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleUpdateProduct}>
-            <div className="space-y-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-5 py-4">
+              {/* Basic Information */}
+              <div className="space-y-3">
+                <h4 className="font-semibold text-sm border-b pb-1">
+                  Basic Information
+                </h4>
                 <div className="space-y-2">
                   <Label htmlFor="edit-name">Product Name *</Label>
                   <Input
@@ -1062,60 +1453,370 @@ export function ProductsManagement({
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="edit-category">Category</Label>
-                  <Input
-                    id="edit-category"
-                    name="category"
-                    defaultValue={selectedProduct?.category?.name || ""}
-                    placeholder="Category (read-only)"
-                    disabled
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="edit-price">Price (₱) *</Label>
-                  <Input
-                    id="edit-price"
-                    name="price"
-                    type="number"
-                    step="0.01"
-                    defaultValue={selectedProduct?.base_price}
-                    placeholder="0.00"
-                    required
+                  <Label htmlFor="edit-description">Description</Label>
+                  <textarea
+                    id="edit-description"
+                    name="description"
+                    rows={3}
+                    defaultValue={selectedProduct?.description ?? ""}
                     disabled={isSubmitting}
+                    className="flex min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    placeholder="Product description..."
                   />
                 </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-category">Category</Label>
+                    <select
+                      id="edit-category"
+                      name="category_id"
+                      defaultValue={selectedProduct?.category_id ?? ""}
+                      disabled={isSubmitting}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <option value="">Select category</option>
+                      {dbCategories.map((cat) => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-brand">Brand</Label>
+                    <select
+                      id="edit-brand"
+                      name="brand_id"
+                      defaultValue={selectedProduct?.brand_id ?? ""}
+                      disabled={isSubmitting}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <option value="">No brand</option>
+                      {brands.map((brand) => (
+                        <option key={brand.id} value={brand.id}>
+                          {brand.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="flex items-center gap-6">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      name="is_published"
+                      defaultChecked={selectedProduct?.is_published ?? true}
+                      disabled={isSubmitting}
+                      className="w-4 h-4 rounded border-gray-300"
+                    />
+                    <span className="text-sm">Published</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      name="is_featured"
+                      defaultChecked={selectedProduct?.is_featured ?? false}
+                      disabled={isSubmitting}
+                      className="w-4 h-4 rounded border-gray-300"
+                    />
+                    <span className="text-sm">Featured</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Pricing */}
+              <div className="space-y-3">
+                <h4 className="font-semibold text-sm border-b pb-1">Pricing</h4>
+                {selectedProduct?.has_variants ? (
+                  <div className="space-y-3">
+                    {editVariantsLoading ? (
+                      <p className="text-sm text-muted-foreground">
+                        Loading variants...
+                      </p>
+                    ) : (
+                      <div className="rounded-md border overflow-hidden">
+                        <table className="w-full text-sm">
+                          <thead className="bg-muted">
+                            <tr>
+                              <th className="px-3 py-2 text-left font-medium">
+                                Variant
+                              </th>
+                              <th className="px-3 py-2 text-left font-medium">
+                                Price (₱)
+                              </th>
+                              <th className="px-3 py-2 text-left font-medium">
+                                Stock
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {editVariants.map((v) => {
+                              const label =
+                                Object.values(v.attributes ?? {}).join(" / ") ||
+                                v.sku;
+                              return (
+                                <tr key={v.id}>
+                                  <td className="px-3 py-2 font-medium">
+                                    {label}
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <Input
+                                      type="number"
+                                      step="0.01"
+                                      min="0"
+                                      value={v.price ?? ""}
+                                      onChange={(e) =>
+                                        setEditVariants((prev) =>
+                                          prev.map((ev) =>
+                                            ev.id === v.id
+                                              ? {
+                                                  ...ev,
+                                                  price:
+                                                    parseFloat(
+                                                      e.target.value
+                                                    ) || null,
+                                                }
+                                              : ev
+                                          )
+                                        )
+                                      }
+                                      disabled={isSubmitting}
+                                      className="h-8"
+                                      placeholder="0.00"
+                                    />
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      value={v.stock_quantity ?? ""}
+                                      onChange={(e) =>
+                                        setEditVariants((prev) =>
+                                          prev.map((ev) =>
+                                            ev.id === v.id
+                                              ? {
+                                                  ...ev,
+                                                  stock_quantity:
+                                                    parseInt(e.target.value) ||
+                                                    0,
+                                                }
+                                              : ev
+                                          )
+                                        )
+                                      }
+                                      disabled={isSubmitting}
+                                      className="h-8"
+                                      placeholder="0"
+                                    />
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-4 pt-1">
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-1">
+                          <Label htmlFor="edit-compare">
+                            Compare at Price (₱)
+                          </Label>
+                          <span className="group relative">
+                            <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                            <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-56 rounded-md bg-gray-800 px-2.5 py-1.5 text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity z-10 shadow-lg">
+                              The original &ldquo;was&rdquo; price shown crossed
+                              out next to the sale price. Does not affect the
+                              actual selling price.
+                            </span>
+                          </span>
+                        </div>
+                        <Input
+                          id="edit-compare"
+                          name="compare_at_price"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          defaultValue={selectedProduct?.compare_at_price ?? ""}
+                          placeholder="0.00"
+                          disabled={isSubmitting}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-cost">Cost Price (₱)</Label>
+                        <Input
+                          id="edit-cost"
+                          name="cost_price"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          defaultValue={selectedProduct?.cost_price ?? ""}
+                          placeholder="0.00"
+                          disabled={isSubmitting}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-price">Price (₱) *</Label>
+                      <Input
+                        id="edit-price"
+                        name="price"
+                        type="number"
+                        step="0.01"
+                        defaultValue={selectedProduct?.base_price}
+                        placeholder="0.00"
+                        required
+                        disabled={isSubmitting}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-1">
+                        <Label htmlFor="edit-compare">
+                          Compare at Price (₱)
+                        </Label>
+                        <span className="group relative">
+                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                          <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-56 rounded-md bg-gray-800 px-2.5 py-1.5 text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity z-10 shadow-lg">
+                            The original &ldquo;was&rdquo; price shown crossed
+                            out next to the sale price. Does not affect the
+                            actual selling price.
+                          </span>
+                        </span>
+                      </div>
+                      <Input
+                        id="edit-compare"
+                        name="compare_at_price"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        defaultValue={selectedProduct?.compare_at_price ?? ""}
+                        placeholder="0.00"
+                        disabled={isSubmitting}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-cost">Cost Price (₱)</Label>
+                      <Input
+                        id="edit-cost"
+                        name="cost_price"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        defaultValue={selectedProduct?.cost_price ?? ""}
+                        placeholder="0.00"
+                        disabled={isSubmitting}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Inventory */}
+              <div className="space-y-3">
+                <h4 className="font-semibold text-sm border-b pb-1">
+                  Inventory
+                </h4>
+                <div className="grid grid-cols-2 gap-4">
+                  {!selectedProduct?.has_variants && (
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-stock">Stock Quantity *</Label>
+                      <Input
+                        id="edit-stock"
+                        name="stock"
+                        type="number"
+                        defaultValue={selectedProduct?.stock_quantity ?? 0}
+                        placeholder="0"
+                        required
+                        disabled={isSubmitting}
+                      />
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-low-stock">Low Stock Threshold</Label>
+                    <Input
+                      id="edit-low-stock"
+                      name="low_stock_threshold"
+                      type="number"
+                      min="0"
+                      defaultValue={selectedProduct?.low_stock_threshold ?? 10}
+                      disabled={isSubmitting}
+                      placeholder="10"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-critical-stock">
+                      Critical Stock Threshold
+                    </Label>
+                    <Input
+                      id="edit-critical-stock"
+                      name="critical_stock_threshold"
+                      type="number"
+                      min="0"
+                      defaultValue={
+                        selectedProduct?.critical_stock_threshold ?? 5
+                      }
+                      disabled={isSubmitting}
+                      placeholder="5"
+                    />
+                  </div>
+                  <div className="flex items-center pt-5">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        name="track_inventory"
+                        defaultChecked={
+                          selectedProduct?.track_inventory ?? true
+                        }
+                        disabled={isSubmitting}
+                        className="w-4 h-4 rounded border-gray-300"
+                      />
+                      <span className="text-sm">Track Inventory</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              {/* Identifiers */}
+              <div className="space-y-3">
+                <h4 className="font-semibold text-sm border-b pb-1">
+                  Identifiers
+                </h4>
                 <div className="space-y-2">
-                  <Label htmlFor="edit-stock">Stock Quantity *</Label>
+                  <Label htmlFor="edit-barcode">Barcode</Label>
                   <Input
-                    id="edit-stock"
-                    name="stock"
-                    type="number"
-                    defaultValue={selectedProduct?.stock_quantity ?? 0}
-                    placeholder="0"
-                    required
+                    id="edit-barcode"
+                    name="barcode"
+                    defaultValue={selectedProduct?.barcode ?? ""}
+                    placeholder="e.g., 1234567890123"
                     disabled={isSubmitting}
                   />
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label>Product Images (Read-only)</Label>
-                <div className="grid grid-cols-5 gap-2">
-                  {productImages.map((url, index) => (
-                    <div
-                      key={index}
-                      className="relative aspect-square overflow-hidden rounded-lg border"
-                    >
-                      <Image
-                        src={url}
-                        alt={`Product ${index + 1}`}
-                        fill
-                        className="object-cover"
-                      />
-                    </div>
-                  ))}
+              {/* Images */}
+              {productImages.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Product Images</Label>
+                  <div className="grid grid-cols-5 gap-2">
+                    {productImages.map((url, index) => (
+                      <div
+                        key={index}
+                        className="relative aspect-square overflow-hidden rounded-lg border"
+                      >
+                        <Image
+                          src={url}
+                          alt={`Product ${index + 1}`}
+                          fill
+                          className="object-cover"
+                        />
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
             <DialogFooter>
               <Button

@@ -30,16 +30,20 @@ export const getShopSettings = withErrorHandling(
     await requireRole(["admin"]);
     const supabase = await createClient();
 
-    const { data, error: fetchError } = await supabase
-      .from("shop_settings")
-      .select()
-      .single();
+    const { data } = await supabase.from("shop_settings").select("key, value");
 
-    if (fetchError) {
+    if (!data || data.length === 0) {
       return success(SETTINGS_DEFAULTS);
     }
 
-    return success({ ...SETTINGS_DEFAULTS, ...data });
+    const map = (data as { key: string; value: unknown }[]).reduce<
+      Record<string, unknown>
+    >((acc, row) => {
+      acc[row.key] = row.value;
+      return acc;
+    }, {});
+
+    return success({ ...SETTINGS_DEFAULTS, ...map });
   }
 );
 
@@ -73,47 +77,32 @@ export const getPublicShippingSettings = withErrorHandling(
  * Update shop settings
  */
 export const updateShopSettings = withErrorHandling(
-  async (settings: any): Promise<ActionResponse> => {
-    await requireRole(["admin"]);
+  async (settings: Record<string, unknown>): Promise<ActionResponse> => {
+    const admin = await requireRole(["admin"]);
     const supabase = await createClient();
 
-    // Check if settings exist
-    const { data: existing } = await supabase
+    // Upsert each key-value pair into the shop_settings table
+    const entries = Object.entries(settings);
+    const upsertRows = entries.map(([key, value]) => ({
+      key,
+      value: value as import("@/database.types").Json,
+      updated_by: admin.id,
+    }));
+
+    const { error: upsertError } = await supabase
       .from("shop_settings")
-      .select()
-      .single();
+      .upsert(upsertRows, { onConflict: "key" });
 
-    let data;
-    if (existing) {
-      const { data: updated, error: updateError } = await supabase
-        .from("shop_settings")
-        .update(settings)
-        .eq("id", existing.id)
-        .select()
-        .single();
-
-      if (updateError) return error(updateError.message);
-      data = updated;
-    } else {
-      const { data: created, error: createError } = await supabase
-        .from("shop_settings")
-        .insert(settings)
-        .select()
-        .single();
-
-      if (createError) return error(createError.message);
-      data = created;
-    }
+    if (upsertError) return error(upsertError.message);
 
     await logAudit({
-      action: existing ? "update" : "create",
+      action: "update",
       entityType: "product", // Using existing entity type
-      entityId: data.id,
       newValue: settings,
     });
 
     revalidatePath("/admin/settings");
-    return success(data, "Settings updated successfully");
+    return success(settings, "Settings updated successfully");
   }
 );
 

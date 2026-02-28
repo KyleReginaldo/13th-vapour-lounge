@@ -1,5 +1,6 @@
 import { OrdersManagement } from "@/components/admin/OrdersManagement";
 import { createClient } from "@/lib/supabase/server";
+import { Suspense } from "react";
 
 export default async function OrdersPage() {
   const supabase = await createClient();
@@ -21,7 +22,9 @@ export default async function OrdersPage() {
 
   return (
     <div className="p-4 md:p-8">
-      <OrdersManagement orders={orders || []} />
+      <Suspense>
+        <OrdersManagement orders={orders || []} />
+      </Suspense>
     </div>
   );
 }

@@ -11,7 +11,7 @@ import {
   withErrorHandling,
 } from "@/lib/actions/utils";
 import { logAudit } from "@/lib/auth/audit";
-import { requireRole } from "@/lib/auth/roles";
+import { requireClockedIn, requireRole } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
 import {
   rejectPaymentSchema,
@@ -64,7 +64,7 @@ export const getPaymentProofs = withErrorHandling(
  */
 export const verifyPayment = withErrorHandling(
   async (proofId: string, orderId: string): Promise<ActionResponse> => {
-    const user = await requireRole(["admin", "staff"]);
+    const user = await requireClockedIn();
     const validated = validateInput(verifyPaymentSchema, {
       proof_id: proofId,
       order_id: orderId,
@@ -111,7 +111,7 @@ export const verifyPayment = withErrorHandling(
  */
 export const rejectPayment = withErrorHandling(
   async (proofId: string, reason: string): Promise<ActionResponse> => {
-    const user = await requireRole(["admin", "staff"]);
+    const user = await requireClockedIn();
     const validated = validateInput(rejectPaymentSchema, {
       proof_id: proofId,
       reason,

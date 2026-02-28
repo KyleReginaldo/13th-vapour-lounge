@@ -16,6 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { IconInput } from "@/components/ui/icon-input";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -32,12 +33,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { Database } from "@/database.types";
+import type { Database, Json } from "@/database.types";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
 import {
   AlertCircle,
   AlertTriangle,
+  ChevronDown,
+  ChevronRight,
   Clock,
   Edit3,
   Filter,
@@ -48,10 +51,20 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
+type ProductVariant = {
+  id: string;
+  sku: string;
+  price: number | null;
+  stock_quantity: number | null;
+  attributes: Json;
+  is_active: boolean | null;
+};
+
 type Product = Database["public"]["Tables"]["products"]["Row"] & {
   product_images?: { url: string; sort_order: number | null }[];
   brands?: { name: string } | null;
   categories?: { name: string } | null;
+  product_variants?: ProductVariant[];
 };
 
 type StockMovement = {
@@ -76,6 +89,7 @@ type StockFilter =
 
 type StockAdjustment = {
   product_id: string;
+  variant_id?: string;
   adjustment_type: "add" | "subtract" | "set";
   quantity: number;
   reason: string;
@@ -92,6 +106,24 @@ export function InventoryManagement() {
   const [adjustmentDialogOpen, setAdjustmentDialogOpen] = useState(false);
   const [movementHistoryOpen, setMovementHistoryOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+
+  const toggleExpandedRow = (id: string) =>
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  // Get total effective stock (sums variants if has_variants)
+  const getEffectiveStock = (product: Product): number => {
+    if (product.has_variants && product.product_variants?.length) {
+      return product.product_variants
+        .filter((v) => v.is_active)
+        .reduce((sum, v) => sum + (v.stock_quantity ?? 0), 0);
+    }
+    return product.stock_quantity ?? 0;
+  };
 
   // Stock level thresholds
   const LOW_STOCK_THRESHOLD = 10;
@@ -110,7 +142,8 @@ export function InventoryManagement() {
           *,
           product_images(url, sort_order),
           brands(name),
-          categories(name)
+          categories(name),
+          product_variants(id, sku, price, stock_quantity, attributes, is_active)
         `
         )
         .order("name");
@@ -184,23 +217,21 @@ export function InventoryManagement() {
     // Apply stock filter
     switch (stockFilter) {
       case "low-stock":
-        filtered = filtered.filter(
-          (p) =>
-            (p.stock_quantity ?? 0) <= LOW_STOCK_THRESHOLD &&
-            (p.stock_quantity ?? 0) > 0
-        );
+        filtered = filtered.filter((p) => {
+          const s = getEffectiveStock(p);
+          return s <= LOW_STOCK_THRESHOLD && s > 0;
+        });
         break;
       case "out-of-stock":
-        filtered = filtered.filter((p) => (p.stock_quantity ?? 0) === 0);
+        filtered = filtered.filter((p) => getEffectiveStock(p) === 0);
         break;
       case "overstock":
         filtered = filtered.filter(
-          (p) => (p.stock_quantity ?? 0) > OVERSTOCK_THRESHOLD
+          (p) => getEffectiveStock(p) > OVERSTOCK_THRESHOLD
         );
         break;
       case "expiring":
-        // In real implementation, filter by expiry date
-        filtered = filtered.filter((p) => (p.stock_quantity ?? 0) > 0);
+        filtered = filtered.filter((p) => getEffectiveStock(p) > 0);
         break;
     }
 
@@ -245,43 +276,93 @@ export function InventoryManagement() {
 
       if (!product) return;
 
-      let newQuantity: number;
-      switch (adjustment.adjustment_type) {
-        case "add":
-          newQuantity = (product.stock_quantity ?? 0) + adjustment.quantity;
-          break;
-        case "subtract":
-          newQuantity = Math.max(
-            0,
-            (product.stock_quantity ?? 0) - adjustment.quantity
-          );
-          break;
-        case "set":
-          newQuantity = adjustment.quantity;
-          break;
-        default:
+      // Variant-level adjustment
+      if (adjustment.variant_id) {
+        const variant = product.product_variants?.find(
+          (v) => v.id === adjustment.variant_id
+        );
+        if (!variant) return;
+
+        let newQty: number;
+        switch (adjustment.adjustment_type) {
+          case "add":
+            newQty = (variant.stock_quantity ?? 0) + adjustment.quantity;
+            break;
+          case "subtract":
+            newQty = Math.max(
+              0,
+              (variant.stock_quantity ?? 0) - adjustment.quantity
+            );
+            break;
+          case "set":
+            newQty = adjustment.quantity;
+            break;
+          default:
+            return;
+        }
+
+        const { error } = await supabase
+          .from("product_variants")
+          .update({ stock_quantity: newQty })
+          .eq("id", adjustment.variant_id);
+
+        if (error) {
+          console.error("Error updating variant stock:", error);
           return;
+        }
+
+        setProducts((prev) =>
+          prev.map((p) =>
+            p.id === adjustment.product_id
+              ? {
+                  ...p,
+                  product_variants: p.product_variants?.map((v) =>
+                    v.id === adjustment.variant_id
+                      ? { ...v, stock_quantity: newQty }
+                      : v
+                  ),
+                }
+              : p
+          )
+        );
+      } else {
+        // Product-level adjustment
+        let newQuantity: number;
+        switch (adjustment.adjustment_type) {
+          case "add":
+            newQuantity = (product.stock_quantity ?? 0) + adjustment.quantity;
+            break;
+          case "subtract":
+            newQuantity = Math.max(
+              0,
+              (product.stock_quantity ?? 0) - adjustment.quantity
+            );
+            break;
+          case "set":
+            newQuantity = adjustment.quantity;
+            break;
+          default:
+            return;
+        }
+
+        const { error: updateError } = await supabase
+          .from("products")
+          .update({ stock_quantity: newQuantity })
+          .eq("id", adjustment.product_id);
+
+        if (updateError) {
+          console.error("Error updating stock:", updateError);
+          return;
+        }
+
+        setProducts((prev) =>
+          prev.map((p) =>
+            p.id === adjustment.product_id
+              ? { ...p, stock_quantity: newQuantity }
+              : p
+          )
+        );
       }
-
-      // Update product stock
-      const { error: updateError } = await supabase
-        .from("products")
-        .update({ stock_quantity: newQuantity })
-        .eq("id", adjustment.product_id);
-
-      if (updateError) {
-        console.error("Error updating stock:", updateError);
-        return;
-      }
-
-      // Update local state
-      setProducts((prev) =>
-        prev.map((p) =>
-          p.id === adjustment.product_id
-            ? { ...p, stock_quantity: newQuantity }
-            : p
-        )
-      );
 
       // Create stock movement record
       const movementQuantity =
@@ -310,20 +391,29 @@ export function InventoryManagement() {
     }
   };
 
-  // Calculate inventory stats
+  // Calculate inventory stats using effective stock
   const totalProducts = products.length;
-  const lowStockCount = products.filter(
-    (p) =>
-      (p.stock_quantity ?? 0) <= LOW_STOCK_THRESHOLD &&
-      (p.stock_quantity ?? 0) > 0
-  ).length;
+  const lowStockCount = products.filter((p) => {
+    const s = getEffectiveStock(p);
+    return s <= LOW_STOCK_THRESHOLD && s > 0;
+  }).length;
   const outOfStockCount = products.filter(
-    (p) => (p.stock_quantity ?? 0) === 0
+    (p) => getEffectiveStock(p) === 0
   ).length;
-  const totalValue = products.reduce(
-    (sum, p) => sum + p.base_price * (p.stock_quantity ?? 0),
-    0
-  );
+  const totalValue = products.reduce((sum, p) => {
+    if (p.has_variants && p.product_variants?.length) {
+      return (
+        sum +
+        p.product_variants
+          .filter((v) => v.is_active)
+          .reduce(
+            (vs, v) => vs + (v.price ?? p.base_price) * (v.stock_quantity ?? 0),
+            0
+          )
+      );
+    }
+    return sum + p.base_price * (p.stock_quantity ?? 0);
+  }, 0);
 
   if (isLoading) {
     return (
@@ -405,15 +495,13 @@ export function InventoryManagement() {
 
       {/* Search and Filters */}
       <div className="flex flex-col md:flex-row gap-4">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search by product name, SKU, or brand..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
-        </div>
+        <IconInput
+          icon={Search}
+          containerClassName="flex-1"
+          placeholder="Search by product name, SKU, or brand..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
 
         <Select
           value={stockFilter}
@@ -466,55 +554,154 @@ export function InventoryManagement() {
             </TableHeader>
             <TableBody>
               {filteredProducts.map((product) => {
-                const status = getStockStatus(product.stock_quantity ?? 0);
+                const effectiveStock = getEffectiveStock(product);
+                const status = getStockStatus(effectiveStock);
                 const stockValue =
-                  product.base_price * (product.stock_quantity ?? 0);
+                  product.has_variants && product.product_variants?.length
+                    ? product.product_variants
+                        .filter((v) => v.is_active)
+                        .reduce(
+                          (s, v) =>
+                            s +
+                            (v.price ?? product.base_price) *
+                              (v.stock_quantity ?? 0),
+                          0
+                        )
+                    : product.base_price * (product.stock_quantity ?? 0);
+                const isExpanded = expandedRows.has(product.id);
 
                 return (
-                  <TableRow key={product.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        {product.product_images &&
-                          product.product_images[0] && (
-                            <img
-                              src={product.product_images[0].url}
-                              alt={product.name}
-                              className="w-10 h-10 object-cover rounded"
-                            />
+                  <>
+                    <TableRow key={product.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          {product.has_variants &&
+                          product.product_variants?.length ? (
+                            <button
+                              type="button"
+                              onClick={() => toggleExpandedRow(product.id)}
+                              className="p-0.5 rounded hover:bg-gray-100"
+                            >
+                              {isExpanded ? (
+                                <ChevronDown className="h-4 w-4 text-gray-500" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4 text-gray-500" />
+                              )}
+                            </button>
+                          ) : (
+                            <span className="w-5" />
                           )}
-                        <div>
-                          <div className="font-medium">{product.name}</div>
-                          <div className="text-sm text-muted-foreground">
-                            {product.description?.slice(0, 50)}...
+                          {product.product_images &&
+                            product.product_images[0] && (
+                              <img
+                                src={product.product_images[0].url}
+                                alt={product.name}
+                                className="w-10 h-10 object-cover rounded"
+                              />
+                            )}
+                          <div>
+                            <div className="font-medium">{product.name}</div>
+                            <div className="text-sm text-muted-foreground">
+                              {product.description?.slice(0, 50)}
+                              {(product.description?.length ?? 0) > 50
+                                ? "..."
+                                : ""}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>{product.brands?.name || "N/A"}</TableCell>
-                    <TableCell>{product.categories?.name || "N/A"}</TableCell>
-                    <TableCell className="text-center font-bold">
-                      {product.stock_quantity}
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={status.cls}>{status.label}</Badge>
-                    </TableCell>
-                    <TableCell>{formatCurrency(product.base_price)}</TableCell>
-                    <TableCell>{formatCurrency(stockValue)}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setSelectedProduct(product);
-                            setAdjustmentDialogOpen(true);
-                          }}
-                        >
-                          <Edit3 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
+                      </TableCell>
+                      <TableCell>{product.brands?.name || "N/A"}</TableCell>
+                      <TableCell>{product.categories?.name || "N/A"}</TableCell>
+                      <TableCell className="text-center font-bold">
+                        {effectiveStock}
+                        {product.has_variants && (
+                          <span className="ml-1 text-xs font-normal text-muted-foreground">
+                            (total)
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={status.cls}>{status.label}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        {product.has_variants
+                          ? (() => {
+                              const prices = (product.product_variants ?? [])
+                                .filter((v) => v.is_active && v.price !== null)
+                                .map((v) => v.price as number);
+                              if (prices.length === 0)
+                                return formatCurrency(product.base_price);
+                              const min = Math.min(...prices);
+                              const max = Math.max(...prices);
+                              return min === max
+                                ? formatCurrency(min)
+                                : `${formatCurrency(min)} – ${formatCurrency(max)}`;
+                            })()
+                          : formatCurrency(product.base_price)}
+                      </TableCell>
+                      <TableCell>{formatCurrency(stockValue)}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setSelectedProduct(product);
+                              setAdjustmentDialogOpen(true);
+                            }}
+                          >
+                            <Edit3 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+
+                    {/* Variant sub-rows */}
+                    {isExpanded &&
+                      product.product_variants?.map((variant) => {
+                        const varLabel =
+                          Object.values(variant.attributes ?? {}).join(" / ") ||
+                          variant.sku;
+                        const varStock = variant.stock_quantity ?? 0;
+                        const varStatus = getStockStatus(varStock);
+                        return (
+                          <TableRow
+                            key={variant.id}
+                            className="bg-gray-50 text-sm"
+                          >
+                            <TableCell className="pl-16">
+                              <span className="font-medium text-gray-700">
+                                {varLabel}
+                              </span>
+                              <span className="ml-2 text-xs text-muted-foreground">
+                                {variant.sku}
+                              </span>
+                            </TableCell>
+                            <TableCell />
+                            <TableCell />
+                            <TableCell className="text-center font-semibold">
+                              {varStock}
+                            </TableCell>
+                            <TableCell>
+                              <Badge className={varStatus.cls}>
+                                {varStatus.label}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              {variant.price !== null
+                                ? formatCurrency(variant.price)
+                                : "—"}
+                            </TableCell>
+                            <TableCell>
+                              {variant.price !== null
+                                ? formatCurrency(variant.price * varStock)
+                                : "—"}
+                            </TableCell>
+                            <TableCell />
+                          </TableRow>
+                        );
+                      })}
+                  </>
                 );
               })}
             </TableBody>
@@ -558,6 +745,16 @@ function StockAdjustmentDialog({
   const [quantity, setQuantity] = useState("");
   const [reason, setReason] = useState("");
   const [referenceNumber, setReferenceNumber] = useState("");
+  const [selectedVariantId, setSelectedVariantId] = useState<string>("");
+
+  // Reset variant selection whenever the product changes
+  useEffect(() => {
+    if (product?.has_variants && product.product_variants?.length) {
+      setSelectedVariantId(product.product_variants[0].id);
+    } else {
+      setSelectedVariantId("");
+    }
+  }, [product]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -565,6 +762,7 @@ function StockAdjustmentDialog({
 
     onAdjustmentSubmit({
       product_id: product.id,
+      variant_id: selectedVariantId || undefined,
       adjustment_type: adjustmentType,
       quantity: parseInt(quantity),
       reason,
@@ -579,17 +777,53 @@ function StockAdjustmentDialog({
 
   if (!product) return null;
 
+  const hasVariants =
+    product.has_variants && (product.product_variants?.length ?? 0) > 0;
+  const selectedVariant = product.product_variants?.find(
+    (v) => v.id === selectedVariantId
+  );
+  const currentStock = selectedVariant
+    ? (selectedVariant.stock_quantity ?? 0)
+    : (product.stock_quantity ?? 0);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Adjust Stock: {product.name}</DialogTitle>
           <DialogDescription>
-            Current stock: {product.stock_quantity} units
+            Current stock: {currentStock} units
+            {hasVariants && " (select a variant below)"}
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Variant selector */}
+          {hasVariants && (
+            <div>
+              <label className="text-sm font-medium">Variant</label>
+              <Select
+                value={selectedVariantId}
+                onValueChange={setSelectedVariantId}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select variant" />
+                </SelectTrigger>
+                <SelectContent>
+                  {product.product_variants?.map((v) => {
+                    const label =
+                      Object.values(v.attributes ?? {}).join(" / ") || v.sku;
+                    return (
+                      <SelectItem key={v.id} value={v.id}>
+                        {label} — {v.stock_quantity ?? 0} in stock
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           <div>
             <label className="text-sm font-medium">Adjustment Type</label>
             <Select

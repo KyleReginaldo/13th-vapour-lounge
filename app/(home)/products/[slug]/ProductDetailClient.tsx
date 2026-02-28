@@ -1,6 +1,7 @@
 "use client";
 
 import { AddToCartButton } from "@/components/product/AddToCartButton";
+import { PriceDisplay } from "@/components/product/PriceDisplay";
 import { QuantityInput } from "@/components/product/QuantityInput";
 import { VariantSelector } from "@/components/product/VariantSelector";
 import { Separator } from "@/components/ui/separator";
@@ -23,6 +24,7 @@ interface Product {
   name: string;
   slug: string;
   base_price: number;
+  compare_at_price?: number | null;
   stock_quantity: number | null;
   has_variants: boolean | null;
 }
@@ -54,6 +56,9 @@ export function ProductDetailClient({
   const currentPrice = selectedVariant
     ? (selectedVariant.price ?? product.base_price)
     : product.base_price;
+  const currentCompareAtPrice = selectedVariant
+    ? (selectedVariant.compare_at_price ?? product.compare_at_price ?? null)
+    : (product.compare_at_price ?? null);
   const currentStock = selectedVariant
     ? selectedVariant.stock_quantity
     : product.stock_quantity;
@@ -63,14 +68,23 @@ export function ProductDetailClient({
 
   return (
     <div className="space-y-6">
+      {/* Dynamic price — updates when variant changes */}
+      <PriceDisplay
+        basePrice={currentPrice}
+        compareAtPrice={currentCompareAtPrice}
+        className="text-2xl"
+      />
+
       {/* Variant Selector */}
       {hasVariants && variants.length > 0 && (
         <>
           <VariantSelector
             variants={variants}
             selectedVariantId={selectedVariantId}
-            onVariantChange={setSelectedVariantId}
-            disabled={!isInStock}
+            onVariantChange={(id) => {
+              setSelectedVariantId(id);
+              setQuantity(1);
+            }}
           />
           <Separator />
         </>
@@ -98,17 +112,16 @@ export function ProductDetailClient({
       </div>
 
       {/* Add to Cart Button */}
-      {(product.stock_quantity ?? 0) >= 1 &&
-        (product.stock_quantity ?? 0) >= quantity && (
-          <AddToCartButton
-            productId={product.id}
-            variantId={selectedVariantId}
-            quantity={quantity}
-            disabled={!isInStock}
-            className="w-full"
-            isLoggedIn={isLoggedIn}
-          />
-        )}
+      {isInStock && (currentStock ?? 0) >= quantity && (
+        <AddToCartButton
+          productId={product.id}
+          variantId={selectedVariantId}
+          quantity={quantity}
+          disabled={!isInStock}
+          className="w-full"
+          isLoggedIn={isLoggedIn}
+        />
+      )}
 
       {/* Out of Stock Message */}
       {!isInStock && (

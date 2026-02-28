@@ -169,6 +169,7 @@ export function SplitPaymentModal({
                       handleUpdatePayment(index, "amount", e.target.value)
                     }
                     className="mt-1"
+                    placeholder="0.00"
                   />
                 </div>
 

@@ -4,7 +4,7 @@ import { autocompleteProducts } from "@/app/actions/products";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { IconInput } from "@/components/ui/icon-input";
 import { cn, formatCurrency } from "@/lib/utils";
 import { Clock, Search, TrendingUp, X } from "lucide-react";
 import Image from "next/image";
@@ -148,16 +148,16 @@ export const SearchAutocomplete = ({
     <div className={cn("relative w-full", className)}>
       {/* Search Input */}
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
+        <IconInput
           ref={inputRef}
+          icon={Search}
           type="text"
           placeholder={placeholder}
           value={query}
           onChange={handleInputChange}
           onFocus={() => setIsOpen(true)}
           onKeyDown={handleKeyDown}
-          className="pl-10 pr-10"
+          className="pr-10"
         />
         {query && (
           <button

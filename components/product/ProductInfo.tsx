@@ -28,12 +28,15 @@ interface ProductInfoProps {
     } | null;
   };
   selectedVariantPrice?: number;
+  /** When true, hides the price block (use when a sibling component shows dynamic variant price) */
+  hidePrice?: boolean;
   className?: string;
 }
 
 export const ProductInfo = ({
   product,
   selectedVariantPrice,
+  hidePrice = false,
   className,
 }: ProductInfoProps) => {
   const displayPrice = selectedVariantPrice || product.base_price;
@@ -94,37 +97,39 @@ export const ProductInfo = ({
         )}
 
       {/* Price */}
-      <div className="space-y-2">
-        <PriceDisplay
-          basePrice={displayPrice}
-          compareAtPrice={product.compare_at_price}
-          className="text-2xl"
-        />
+      {!hidePrice && (
+        <div className="space-y-2">
+          <PriceDisplay
+            basePrice={displayPrice}
+            compareAtPrice={product.compare_at_price}
+            className="text-2xl"
+          />
 
-        {/* Stock Status */}
-        <div className="flex items-center gap-2">
-          {isInStock ? (
-            <>
-              <Package className="h-4 w-4 text-green-600" />
-              <span className="text-sm font-medium text-green-600">
-                In Stock
-              </span>
-              {isLowStock && (
-                <Badge variant="secondary" className="text-orange-600">
-                  Only {product.stock_quantity} left
-                </Badge>
-              )}
-            </>
-          ) : (
-            <>
-              <Package className="h-4 w-4 text-destructive" />
-              <span className="text-sm font-medium text-destructive">
-                Out of Stock
-              </span>
-            </>
-          )}
+          {/* Stock Status */}
+          <div className="flex items-center gap-2">
+            {isInStock ? (
+              <>
+                <Package className="h-4 w-4 text-green-600" />
+                <span className="text-sm font-medium text-green-600">
+                  In Stock
+                </span>
+                {isLowStock && (
+                  <Badge variant="secondary" className="text-orange-600">
+                    Only {product.stock_quantity} left
+                  </Badge>
+                )}
+              </>
+            ) : (
+              <>
+                <Package className="h-4 w-4 text-destructive" />
+                <span className="text-sm font-medium text-destructive">
+                  Out of Stock
+                </span>
+              </>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       <Separator />
 

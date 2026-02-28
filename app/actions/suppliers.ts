@@ -13,17 +13,19 @@ import {
   type PaginatedResponse,
 } from "@/lib/actions/utils";
 import { logAudit } from "@/lib/auth/audit";
-import { requireRole } from "@/lib/auth/roles";
+import { requireClockedIn, requireRole } from "@/lib/auth/roles";
+import { NOTIF_TYPES } from "@/lib/constants/notifications";
 import { createClient } from "@/lib/supabase/server";
 import { supplierSchema, type SupplierInput } from "@/lib/validations/supplier";
 import { revalidatePath } from "next/cache";
+import { notifyActiveStaffOnly, notifyAdminsOnly } from "./notifications";
 
 /**
  * Create a new supplier
  */
 export const createSupplier = withErrorHandling(
   async (input: SupplierInput): Promise<ActionResponse> => {
-    await requireRole(["admin", "staff"]);
+    const actor = await requireClockedIn();
     const validated = validateInput(supplierSchema, input);
     const supabase = await createClient();
 
@@ -43,6 +45,22 @@ export const createSupplier = withErrorHandling(
     });
 
     revalidatePath("/admin/suppliers");
+
+    const _actorName =
+      `${(actor as any).first_name ?? ""} ${(actor as any).last_name ?? ""}`.trim() ||
+      (actor as any).email ||
+      "Staff";
+    void (
+      (actor as any).roles?.name === "admin"
+        ? notifyActiveStaffOnly
+        : notifyAdminsOnly
+    )({
+      title: `New Supplier: ${supplier.name}`,
+      message: `${_actorName} added supplier "${supplier.name}".`,
+      type: NOTIF_TYPES.SUPPLIER_CREATED,
+      link: `/admin/suppliers`,
+    });
+
     return success(supplier, "Supplier created successfully");
   }
 );
@@ -55,7 +73,7 @@ export const updateSupplier = withErrorHandling(
     id: string,
     input: Partial<SupplierInput>
   ): Promise<ActionResponse> => {
-    await requireRole(["admin", "staff"]);
+    const actor = await requireClockedIn();
     const supabase = await createClient();
 
     const { data: oldSupplier } = await supabase
@@ -86,6 +104,22 @@ export const updateSupplier = withErrorHandling(
     });
 
     revalidatePath("/admin/suppliers");
+
+    const _actorNameU =
+      `${(actor as any).first_name ?? ""} ${(actor as any).last_name ?? ""}`.trim() ||
+      (actor as any).email ||
+      "Staff";
+    void (
+      (actor as any).roles?.name === "admin"
+        ? notifyActiveStaffOnly
+        : notifyAdminsOnly
+    )({
+      title: `Supplier Updated: ${supplier.name}`,
+      message: `${_actorNameU} updated supplier "${supplier.name}".`,
+      type: NOTIF_TYPES.SUPPLIER_UPDATED,
+      link: `/admin/suppliers`,
+    });
+
     return success(supplier, "Supplier updated successfully");
   }
 );
@@ -95,7 +129,7 @@ export const updateSupplier = withErrorHandling(
  */
 export const deleteSupplier = withErrorHandling(
   async (id: string): Promise<ActionResponse> => {
-    await requireRole(["admin"]);
+    const actor = await requireRole(["admin"]);
     const supabase = await createClient();
 
     // Check if supplier has purchase orders
@@ -136,6 +170,18 @@ export const deleteSupplier = withErrorHandling(
     });
 
     revalidatePath("/admin/suppliers");
+
+    const _actorNameD =
+      `${(actor as any).first_name ?? ""} ${(actor as any).last_name ?? ""}`.trim() ||
+      (actor as any).email ||
+      "Admin";
+    await notifyActiveStaffOnly({
+      title: `Supplier Deleted: ${supplier.name}`,
+      message: `${_actorNameD} deleted supplier "${supplier.name}".`,
+      type: NOTIF_TYPES.SUPPLIER_DELETED,
+      link: `/admin/suppliers`,
+    });
+
     return success(null, "Supplier deleted successfully");
   }
 );

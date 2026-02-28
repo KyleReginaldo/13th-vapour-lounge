@@ -296,6 +296,114 @@ export function passwordChangeOTPTemplate(params: {
 /**
  * Age verification result email template
  */
+/**
+ * Admin — new online order notification
+ */
+export function adminNewOrderTemplate(params: {
+  orderNumber: string;
+  customerName: string;
+  total: number;
+  itemCount: number;
+  orderUrl: string;
+}): string {
+  const formattedTotal = new Intl.NumberFormat("en-PH", {
+    style: "currency",
+    currency: "PHP",
+  }).format(params.total);
+
+  const content = `
+    <div style="text-align: center; margin-bottom: 24px;">
+      <div style="display: inline-block; background-color: #8b5cf6; color: white; width: 64px; height: 64px; border-radius: 50%; line-height: 64px; font-size: 28px;">🛒</div>
+    </div>
+    <h2 style="color: #111827; margin: 0 0 8px 0; text-align: center;">New Order Received</h2>
+    <p style="color: #6b7280; text-align: center; margin: 0 0 28px 0;">Order <strong>${params.orderNumber}</strong> has been placed.</p>
+
+    <table width="100%" cellpadding="0" cellspacing="0" style="border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; margin-bottom: 24px;">
+      <tr style="background-color: #f9fafb;">
+        <td style="padding: 12px 16px; font-size: 13px; color: #6b7280; font-weight: 600; border-bottom: 1px solid #e5e7eb;">DETAIL</td>
+        <td style="padding: 12px 16px; font-size: 13px; color: #6b7280; font-weight: 600; border-bottom: 1px solid #e5e7eb;">VALUE</td>
+      </tr>
+      <tr>
+        <td style="padding: 12px 16px; font-size: 14px; color: #374151; border-bottom: 1px solid #f3f4f6;">Customer</td>
+        <td style="padding: 12px 16px; font-size: 14px; color: #111827; font-weight: 600; border-bottom: 1px solid #f3f4f6;">${params.customerName}</td>
+      </tr>
+      <tr>
+        <td style="padding: 12px 16px; font-size: 14px; color: #374151; border-bottom: 1px solid #f3f4f6;">Items</td>
+        <td style="padding: 12px 16px; font-size: 14px; color: #111827; font-weight: 600; border-bottom: 1px solid #f3f4f6;">${params.itemCount}</td>
+      </tr>
+      <tr>
+        <td style="padding: 12px 16px; font-size: 14px; color: #374151;">Total</td>
+        <td style="padding: 12px 16px; font-size: 14px; color: #8b5cf6; font-weight: 700;">${formattedTotal}</td>
+      </tr>
+    </table>
+
+    <div style="text-align: center;">
+      <a href="${params.orderUrl}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 28px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 15px;">View Order</a>
+    </div>
+  `;
+  return emailWrapper(content);
+}
+
+/**
+ * Admin — staff clocked in notification
+ */
+export function staffClockInTemplate(params: {
+  staffName: string;
+  clockInTime: string;
+}): string {
+  const content = `
+    <div style="text-align: center; margin-bottom: 24px;">
+      <div style="display: inline-block; background-color: #10b981; color: white; width: 64px; height: 64px; border-radius: 50%; line-height: 64px; font-size: 28px;">⏱</div>
+    </div>
+    <h2 style="color: #111827; margin: 0 0 8px 0; text-align: center;">Staff Clocked In</h2>
+    <p style="color: #4b5563; margin: 0 0 20px 0; line-height: 1.6; text-align: center;">
+      <strong>${params.staffName}</strong> has started their shift at <strong>${params.clockInTime}</strong>.
+    </p>
+  `;
+  return emailWrapper(content);
+}
+
+/**
+ * Admin — staff clocked out notification (with optional cash discrepancy)
+ */
+export function staffClockOutTemplate(params: {
+  staffName: string;
+  clockInTime: string;
+  clockOutTime: string;
+  cashDifference: number;
+}): string {
+  const hasDiff = Math.abs(params.cashDifference) > 0;
+  const diffFormatted = new Intl.NumberFormat("en-PH", {
+    style: "currency",
+    currency: "PHP",
+  }).format(Math.abs(params.cashDifference));
+  const diffLabel =
+    params.cashDifference > 0
+      ? `+${diffFormatted} (overage)`
+      : `-${diffFormatted} (shortage)`;
+  const diffColor = params.cashDifference >= 0 ? "#10b981" : "#ef4444";
+
+  const discrepancyBlock = hasDiff
+    ? `
+    <div style="background-color: #fef2f2; padding: 16px 20px; border-left: 4px solid #ef4444; border-radius: 4px; margin: 20px 0;">
+      <p style="margin: 0; color: #7f1d1d; font-size: 14px;">
+        <strong>⚠️ Cash Discrepancy:</strong> <span style="color: ${diffColor};">${diffLabel}</span> — please review the shift report.
+      </p>
+    </div>`
+    : "";
+
+  const content = `
+    <div style="text-align: center; margin-bottom: 24px;">
+      <div style="display: inline-block; background-color: #6366f1; color: white; width: 64px; height: 64px; border-radius: 50%; line-height: 64px; font-size: 28px;">🔒</div>
+    </div>
+    <h2 style="color: #111827; margin: 0 0 8px 0; text-align: center;">Staff Clocked Out</h2>
+    <p style="color: #4b5563; margin: 0 0 4px 0; text-align: center;"><strong>${params.staffName}</strong> has ended their shift.</p>
+    <p style="color: #9ca3af; font-size: 13px; text-align: center; margin: 0 0 8px 0;">${params.clockInTime} → ${params.clockOutTime}</p>
+    ${discrepancyBlock}
+  `;
+  return emailWrapper(content);
+}
+
 export function ageVerificationResultTemplate(params: {
   customerName: string;
   approved: boolean;

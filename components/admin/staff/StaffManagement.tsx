@@ -18,8 +18,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { IconInput } from "@/components/ui/icon-input";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import {
   Table,
   TableBody,
@@ -87,6 +90,9 @@ export function StaffManagement({ initialStaff, roles }: StaffManagementProps) {
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState(EMPTY_FORM);
+
+  // Derive display value (digits after +63)
+  const contactValue = formData.contact_number.replace(/^\+63/, "");
 
   useEffect(() => {
     setStaff(initialStaff);
@@ -199,15 +205,13 @@ export function StaffManagement({ initialStaff, roles }: StaffManagementProps) {
       </div>
 
       <div className="flex flex-col sm:flex-row gap-4">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search staff..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
-        </div>
+        <IconInput
+          icon={Search}
+          containerClassName="flex-1"
+          placeholder="Search staff..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
         <Button onClick={() => setAddDialogOpen(true)}>
           <Plus className="h-4 w-4 mr-2" /> Add Staff
         </Button>
@@ -423,7 +427,7 @@ export function StaffManagement({ initialStaff, roles }: StaffManagementProps) {
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label className="text-sm font-medium">First Name *</Label>
+                <Label>First Name *</Label>
                 <Input
                   value={formData.first_name}
                   onChange={(e) =>
@@ -432,10 +436,11 @@ export function StaffManagement({ initialStaff, roles }: StaffManagementProps) {
                       first_name: e.target.value,
                     }))
                   }
+                  placeholder="Enter first name"
                 />
               </div>
               <div>
-                <Label className="text-sm font-medium">Last Name *</Label>
+                <Label>Last Name *</Label>
                 <Input
                   value={formData.last_name}
                   onChange={(e) =>
@@ -444,45 +449,47 @@ export function StaffManagement({ initialStaff, roles }: StaffManagementProps) {
                       last_name: e.target.value,
                     }))
                   }
+                  placeholder="Enter last name"
                 />
               </div>
             </div>
             <div>
-              <Label className="text-sm font-medium">Email *</Label>
+              <Label>Email *</Label>
               <Input
                 type="email"
                 value={formData.email}
                 onChange={(e) =>
                   setFormData((prev) => ({ ...prev, email: e.target.value }))
                 }
+                placeholder="staff@example.com"
               />
             </div>
             <div>
-              <Label className="text-sm font-medium">Password *</Label>
-              <Input
-                type="password"
+              <Label>Password *</Label>
+              <PasswordInput
+                hideIcon
                 value={formData.password}
                 onChange={(e) =>
                   setFormData((prev) => ({ ...prev, password: e.target.value }))
                 }
+                placeholder="Enter password"
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label className="text-sm font-medium">Contact Number *</Label>
-                <Input
-                  value={formData.contact_number}
-                  placeholder="+63 9XX XXX XXXX"
-                  onChange={(e) =>
+                <Label>Contact Number *</Label>
+                <PhoneInput
+                  value={contactValue}
+                  onChange={(digits) =>
                     setFormData((prev) => ({
                       ...prev,
-                      contact_number: e.target.value,
+                      contact_number: `+63${digits}`,
                     }))
                   }
                 />
               </div>
               <div>
-                <Label className="text-sm font-medium">Date of Birth *</Label>
+                <Label>Date of Birth *</Label>
                 <Input
                   type="date"
                   value={formData.date_of_birth}

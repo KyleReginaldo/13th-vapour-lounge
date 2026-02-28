@@ -58,13 +58,15 @@ export const VariantSelector = ({
       }
     });
 
-    return Array.from(options.entries()).map(([value, variants]) => ({
+    return Array.from(options.entries()).map(([value, variantList]) => ({
       value,
-      variants,
-      isAvailable: variants.some(
+      variants: variantList,
+      isAvailable: variantList.some(
         (v) =>
           v.is_active && (v.stock_quantity === null || v.stock_quantity > 0)
       ),
+      // Price from the first active variant for this option
+      price: variantList.find((v) => v.is_active)?.price ?? null,
     }));
   };
 
@@ -94,7 +96,7 @@ export const VariantSelector = ({
             </div>
 
             <div className="flex flex-wrap gap-2">
-              {options.map(({ value, isAvailable }) => {
+              {options.map(({ value, isAvailable, price }) => {
                 const isSelected = selectedValue === value;
                 const isDisabled = disabled || !isAvailable;
 
@@ -130,7 +132,12 @@ export const VariantSelector = ({
                         : "border-border bg-background text-foreground"
                     )}
                   >
-                    {value}
+                    <span>{value}</span>
+                    {price !== null && (
+                      <span className="block text-[10px] font-normal opacity-70 leading-none mt-0.5">
+                        ₱{price.toLocaleString()}
+                      </span>
+                    )}
                     {isSelected && (
                       <Check className="absolute right-1 top-1 h-3 w-3" />
                     )}

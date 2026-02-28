@@ -3,6 +3,7 @@
 import { useSidebarStore } from "@/lib/stores/sidebar-store";
 import { cn } from "@/lib/utils";
 import {
+  BellIcon,
   BuildingStorefrontIcon,
   CalendarDaysIcon,
   ChartBarIcon,
@@ -142,13 +143,27 @@ const GROUPS: NavGroup[] = [
         adminOnly: true,
       },
       { name: "Policies", href: "/admin/policies", icon: DocumentTextIcon },
+      {
+        name: "Notifications",
+        href: "/admin/notifications",
+        icon: BellIcon,
+      },
     ],
   },
 ];
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function AdminSidebar({ isAdmin = false }: { isAdmin?: boolean }) {
+export function AdminSidebar({
+  isAdmin = false,
+  shiftStatus = "active",
+}: {
+  isAdmin?: boolean;
+  /** "active" = currently on shift | "done" = clocked out today | "none" = not started today */
+  shiftStatus?: "active" | "done" | "none";
+  /** @deprecated use shiftStatus instead */
+  isClockedIn?: boolean;
+}) {
   const pathname = usePathname();
   const { isOpen, close } = useSidebarStore();
 
@@ -227,6 +242,37 @@ export function AdminSidebar({ isAdmin = false }: { isAdmin?: boolean }) {
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-4">
           <div className="px-3 space-y-0.5">
+            {/* ── Staff shift-status widget (staff only) ── */}
+            {!isAdmin && (
+              <Link
+                href="/admin/shifts"
+                onClick={close}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold mb-3 transition-colors border",
+                  shiftStatus === "active" &&
+                    "bg-emerald-900/50 border-emerald-700 text-emerald-300 hover:bg-emerald-900",
+                  shiftStatus === "done" &&
+                    "bg-sky-900/50 border-sky-700 text-sky-300 hover:bg-sky-900",
+                  shiftStatus === "none" &&
+                    "bg-amber-900/60 border-amber-600 text-amber-300 hover:bg-amber-900 animate-pulse"
+                )}
+              >
+                <ClockIcon className="h-5 w-5 shrink-0" />
+                <span className="flex-1">
+                  {shiftStatus === "active" && "On Shift"}
+                  {shiftStatus === "done" && "Shift Done Today"}
+                  {shiftStatus === "none" && "Not Clocked In!"}
+                </span>
+                <span
+                  className={cn(
+                    "h-2 w-2 rounded-full shrink-0",
+                    shiftStatus === "active" && "bg-emerald-400",
+                    shiftStatus === "done" && "bg-sky-400",
+                    shiftStatus === "none" && "bg-amber-400"
+                  )}
+                />
+              </Link>
+            )}
             {/* Dashboard — standalone */}
             <Link
               href={DASHBOARD.href}
@@ -313,11 +359,35 @@ export function AdminSidebar({ isAdmin = false }: { isAdmin?: boolean }) {
                             "flex items-center gap-3 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
                             isActiveItem(item.href)
                               ? "bg-gray-800 text-white"
-                              : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                              : "text-gray-400 hover:bg-gray-800 hover:text-white",
+                            // Highlight Shifts for staff when not yet clocked in
+                            !isAdmin &&
+                              item.href === "/admin/shifts" &&
+                              !isActiveItem(item.href) &&
+                              shiftStatus === "none" &&
+                              "text-amber-400 font-semibold"
                           )}
                         >
                           <item.icon className="h-4 w-4 shrink-0" />
                           {item.name}
+                          {/* Status badge for staff on Shifts */}
+                          {!isAdmin && item.href === "/admin/shifts" && (
+                            <span
+                              className={cn(
+                                "ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full",
+                                shiftStatus === "active" &&
+                                  "bg-emerald-800 text-emerald-300",
+                                shiftStatus === "done" &&
+                                  "bg-sky-800 text-sky-300",
+                                shiftStatus === "none" &&
+                                  "bg-amber-800 text-amber-300"
+                              )}
+                            >
+                              {shiftStatus === "active" && "IN"}
+                              {shiftStatus === "done" && "DONE"}
+                              {shiftStatus === "none" && "OUT"}
+                            </span>
+                          )}
                         </Link>
                       ))}
                     </div>

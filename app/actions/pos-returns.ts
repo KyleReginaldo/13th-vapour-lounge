@@ -7,7 +7,7 @@ import {
   type ActionResponse,
 } from "@/lib/actions/utils";
 import { logAudit } from "@/lib/auth/audit";
-import { requireRole } from "@/lib/auth/roles";
+import { requireClockedIn, requireRole } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 
@@ -131,7 +131,7 @@ export const processPOSRefund = withErrorHandling(
     refundItems: POSRefundItem[],
     notes?: string
   ): Promise<ActionResponse> => {
-    const user = await requireRole(["admin", "staff"]);
+    const user = await requireClockedIn();
     const supabase = await createClient();
 
     // ── 1. Fetch the POS transaction by primary key ───────────────────────

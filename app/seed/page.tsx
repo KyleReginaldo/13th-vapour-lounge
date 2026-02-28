@@ -20,7 +20,7 @@ export default async function SeedPage() {
 
       <div className="mt-6">
         <a href="/admin" className="text-blue-600 hover:underline">
-          Go to Admin Dashboard →
+          Go to Admin Panel →
         </a>
       </div>
     </div>

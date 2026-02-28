@@ -7,9 +7,11 @@ import {
   type ActionResponse,
 } from "@/lib/actions/utils";
 import { logAudit } from "@/lib/auth/audit";
-import { requireRole } from "@/lib/auth/roles";
+import { requireClockedIn, requireRole } from "@/lib/auth/roles";
+import { NOTIF_TYPES } from "@/lib/constants/notifications";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { notifyAdminAndActiveStaff } from "./notifications";
 
 /**
  * Create POS order (in-store)
@@ -19,7 +21,7 @@ export const createPOSOrder = withErrorHandling(
     items: { product_id: string; quantity: number; price: number }[],
     paymentMethod: string
   ): Promise<ActionResponse> => {
-    const user = await requireRole(["admin", "staff"]);
+    const user = await requireClockedIn();
     const supabase = await createClient();
 
     // Calculate total
@@ -134,6 +136,15 @@ export const createPOSOrder = withErrorHandling(
 
     revalidatePath("/admin/pos");
     revalidatePath("/admin/orders");
+
+    // Notify admin (in-app only — POS sales can be frequent)
+    await notifyAdminAndActiveStaff({
+      title: `POS Sale — ₱${totalWithTax.toFixed(2)}`,
+      message: `${items.length} item${items.length !== 1 ? "s" : ""} sold via POS for ₱${totalWithTax.toFixed(2)} (${orderNumber}).`,
+      type: NOTIF_TYPES.POS_SALE,
+      link: `/admin/orders?order=${orderNumber}`,
+    });
+
     return success(order, "Order created successfully");
   }
 );
@@ -143,7 +154,7 @@ export const createPOSOrder = withErrorHandling(
  */
 export const parkOrder = withErrorHandling(
   async (items: any[], notes?: string): Promise<ActionResponse> => {
-    const user = await requireRole(["admin", "staff"]);
+    const user = await requireClockedIn();
     const supabase = await createClient();
 
     const { data: parked, error: parkError } = await supabase
@@ -187,7 +198,7 @@ export const getParkedOrders = withErrorHandling(
  */
 export const restoreParkedOrder = withErrorHandling(
   async (parkedId: string): Promise<ActionResponse> => {
-    await requireRole(["admin", "staff"]);
+    await requireClockedIn();
     const supabase = await createClient();
 
     const { data, error: fetchError } = await supabase

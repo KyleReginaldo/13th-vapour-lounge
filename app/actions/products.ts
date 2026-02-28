@@ -9,10 +9,12 @@ import {
   type ActionResponse,
 } from "@/lib/actions/utils";
 import { logAudit } from "@/lib/auth/audit";
-import { requireRole } from "@/lib/auth/roles";
+import { requireClockedIn, requireRole } from "@/lib/auth/roles";
+import { NOTIF_TYPES } from "@/lib/constants/notifications";
 import { createClient } from "@/lib/supabase/server";
 import { productSchema, type ProductInput } from "@/lib/validations/product";
 import { revalidatePath } from "next/cache";
+import { notifyActiveStaffOnly, notifyAdminsOnly } from "./notifications";
 
 // Minimal type for raw product rows returned from Supabase select queries
 type ProductImageRow = { url: string; is_primary: boolean | null };
@@ -59,7 +61,7 @@ export type ProductFormData = {
 export const createProduct = withErrorHandling(
   async (formData: ProductInput): Promise<ActionResponse> => {
     // Require staff access
-    await requireRole(["admin", "staff"]);
+    const actor = await requireClockedIn();
 
     // Validate input
     const validated = validateInput(productSchema, formData);
@@ -166,6 +168,20 @@ export const createProduct = withErrorHandling(
 
     revalidatePath("/admin/products");
 
+    // Notify: staff action → admins only; admin action → clocked-in staff only
+    const _actorName =
+      `${actor.first_name ?? ""} ${actor.last_name ?? ""}`.trim() ||
+      actor.email ||
+      "Staff";
+    void (
+      actor.roles?.name === "admin" ? notifyActiveStaffOnly : notifyAdminsOnly
+    )({
+      title: `New Product: ${product.name}`,
+      message: `${_actorName} added new product "${product.name}" (SKU: ${product.sku}).`,
+      type: NOTIF_TYPES.PRODUCT_CREATED,
+      link: `/admin/products`,
+    });
+
     return success(product, "Product created successfully");
   }
 );
@@ -179,7 +195,7 @@ export const updateProduct = withErrorHandling(
     formData: Partial<ProductFormData>
   ): Promise<ActionResponse> => {
     // Require staff access
-    await requireRole(["admin", "staff"]);
+    const actor = await requireClockedIn();
 
     const supabase = await createClient();
 
@@ -213,6 +229,29 @@ export const updateProduct = withErrorHandling(
 
     revalidatePath("/admin/products");
     revalidatePath(`/admin/products/${productId}`);
+    revalidatePath("/cart"); // Refresh cart to pick up new prices
+
+    const _actorName =
+      `${actor.first_name ?? ""} ${actor.last_name ?? ""}`.trim() ||
+      actor.email ||
+      "Staff";
+
+    // Notify if price changed, or just a general update
+    const priceChanged =
+      formData.price !== undefined && formData.price !== oldProduct?.base_price;
+    const isStaff = actor.roles?.name !== "admin";
+    const notifyFn = isStaff ? notifyAdminsOnly : notifyActiveStaffOnly;
+
+    await notifyFn({
+      title: priceChanged
+        ? `Price Changed: ${product.name}`
+        : `Product Updated: ${product.name}`,
+      message: priceChanged
+        ? `${_actorName} changed the price of "${product.name}" from ₱${oldProduct?.base_price} to ₱${product.base_price}.`
+        : `${_actorName} updated product "${product.name}".`,
+      type: NOTIF_TYPES.PRODUCT_UPDATED,
+      link: `/admin/products`,
+    });
 
     return success(product, "Product updated successfully");
   }
@@ -224,7 +263,7 @@ export const updateProduct = withErrorHandling(
 export const deleteProduct = withErrorHandling(
   async (productId: string): Promise<ActionResponse> => {
     // Require admin access only — staff cannot delete products
-    await requireRole(["admin"]);
+    const actor = await requireRole(["admin"]);
 
     const supabase = await createClient();
 
@@ -311,6 +350,18 @@ export const deleteProduct = withErrorHandling(
     });
 
     revalidatePath("/admin/products");
+
+    // Admin-only action → always notify clocked-in staff
+    const _actorName =
+      `${actor.first_name ?? ""} ${actor.last_name ?? ""}`.trim() ||
+      actor.email ||
+      "Admin";
+    await notifyActiveStaffOnly({
+      title: `Product Deleted: ${product.name}`,
+      message: `${_actorName} deleted product "${product.name}".`,
+      type: NOTIF_TYPES.PRODUCT_DELETED,
+      link: `/admin/products`,
+    });
 
     return success(null, "Product deleted successfully");
   }

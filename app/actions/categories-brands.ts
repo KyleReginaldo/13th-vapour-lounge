@@ -7,7 +7,7 @@ import {
   withErrorHandling,
   type ActionResponse,
 } from "@/lib/actions/utils";
-import { requireRole } from "@/lib/auth/roles";
+import { requireClockedIn, requireRole } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
 import { sanitizeHTML } from "@/lib/validations/sanitize";
 import { revalidatePath } from "next/cache";
@@ -39,7 +39,7 @@ const brandSchema = z.object({
  */
 export const createCategory = withErrorHandling(
   async (input: z.infer<typeof categorySchema>): Promise<ActionResponse> => {
-    await requireRole(["admin", "staff"]);
+    await requireClockedIn();
     const supabase = await createClient();
 
     const validated = categorySchema.parse(input);
@@ -85,7 +85,7 @@ export const updateCategory = withErrorHandling(
     categoryId: string,
     input: Partial<z.infer<typeof categorySchema>>
   ): Promise<ActionResponse> => {
-    await requireRole(["admin", "staff"]);
+    await requireClockedIn();
     const supabase = await createClient();
 
     const sanitized = {
@@ -194,7 +194,7 @@ export const getCategories = withErrorHandling(
  */
 export const createBrand = withErrorHandling(
   async (input: z.infer<typeof brandSchema>): Promise<ActionResponse> => {
-    await requireRole(["admin", "staff"]);
+    await requireClockedIn();
     const supabase = await createClient();
 
     const validated = brandSchema.parse(input);
@@ -239,7 +239,7 @@ export const updateBrand = withErrorHandling(
     brandId: string,
     input: Partial<z.infer<typeof brandSchema>>
   ): Promise<ActionResponse> => {
-    await requireRole(["admin", "staff"]);
+    await requireClockedIn();
     const supabase = await createClient();
 
     const sanitized = {

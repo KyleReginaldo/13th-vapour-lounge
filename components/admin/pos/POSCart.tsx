@@ -9,7 +9,13 @@ import { QRCodeScanner } from "@/components/shared/QRCodeScanner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { IconInput } from "@/components/ui/icon-input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -232,6 +238,18 @@ export function POSCart({
   // Clear cart
   const clearCart = () => setCart([]);
 
+  // Variant picker
+  const [variantPickerProduct, setVariantPickerProduct] =
+    useState<Product | null>(null);
+
+  const handleProductClick = (product: Product) => {
+    if (product.product_variants && product.product_variants.length > 0) {
+      setVariantPickerProduct(product);
+    } else {
+      addToCart(product);
+    }
+  };
+
   // Handle scan - supports SKU, barcode, and QR code
   const handleScan = (code: string) => {
     // First, try to find product by SKU, barcode, or QR code
@@ -270,6 +288,7 @@ export function POSCart({
     try {
       const items = cart.map((item) => ({
         product_id: item.productId,
+        variant_id: item.variantId,
         quantity: item.quantity,
         price: item.price,
       }));
@@ -311,15 +330,13 @@ export function POSCart({
         <div className="flex flex-col h-full p-4 lg:p-0 pb-24 lg:pb-0">
           {/* Search & Actions */}
           <div className="flex gap-3 shrink-0 mb-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search by name..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 h-11"
-              />
-            </div>
+            <IconInput
+              icon={Search}
+              containerClassName="flex-1"
+              placeholder="Search by name..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
             <Button
               variant="outline"
               size="icon"
@@ -359,7 +376,9 @@ export function POSCart({
                       className={`group cursor-pointer transition-all hover:shadow-lg ${
                         isOutOfStock ? "opacity-60" : "hover:scale-[1.02]"
                       }`}
-                      onClick={() => !isOutOfStock && addToCart(product)}
+                      onClick={() =>
+                        !isOutOfStock && handleProductClick(product)
+                      }
                     >
                       <CardContent className="p-3">
                         <div className="relative aspect-square mb-3 bg-muted rounded-lg overflow-hidden">
@@ -396,7 +415,16 @@ export function POSCart({
                           </h3>
                           <div className="flex items-center justify-between">
                             <span className="text-lg font-bold text-primary">
-                              {formatCurrency(product.base_price)}
+                              {product.product_variants &&
+                              product.product_variants.length > 0
+                                ? `From ${formatCurrency(
+                                    Math.min(
+                                      ...product.product_variants.map(
+                                        (v) => v.price ?? product.base_price
+                                      )
+                                    )
+                                  )}`
+                                : formatCurrency(product.base_price)}
                             </span>
                             <Badge variant="outline" className="text-xs">
                               {stock}
@@ -423,7 +451,9 @@ export function POSCart({
                       className={`cursor-pointer transition-all hover:shadow-md ${
                         isOutOfStock ? "opacity-60" : ""
                       }`}
-                      onClick={() => !isOutOfStock && addToCart(product)}
+                      onClick={() =>
+                        !isOutOfStock && handleProductClick(product)
+                      }
                     >
                       <CardContent className="p-4">
                         <div className="flex items-center gap-4">
@@ -449,7 +479,16 @@ export function POSCart({
                           </div>
                           <div className="text-right">
                             <div className="text-lg font-bold">
-                              {formatCurrency(product.base_price)}
+                              {product.product_variants &&
+                              product.product_variants.length > 0
+                                ? `From ${formatCurrency(
+                                    Math.min(
+                                      ...product.product_variants.map(
+                                        (v) => v.price ?? product.base_price
+                                      )
+                                    )
+                                  )}`
+                                : formatCurrency(product.base_price)}
                             </div>
                             <Badge variant="outline" className="mt-1">
                               Stock: {stock}
@@ -524,6 +563,11 @@ export function POSCart({
                         <p className="text-xs text-muted-foreground">
                           {item.sku}
                         </p>
+                        {item.variantAttributes && (
+                          <p className="text-xs font-medium text-primary/80">
+                            {Object.values(item.variantAttributes).join(" / ")}
+                          </p>
+                        )}
                         <div className="flex items-center gap-2 mt-1">
                           <span className="text-sm font-bold">
                             {formatCurrency(item.price)}
@@ -704,6 +748,11 @@ export function POSCart({
                       {item.name}
                     </h4>
                     <p className="text-xs text-muted-foreground">{item.sku}</p>
+                    {item.variantAttributes && (
+                      <p className="text-xs font-medium text-primary/80">
+                        {Object.values(item.variantAttributes).join(" / ")}
+                      </p>
+                    )}
                     <span className="text-sm font-bold">
                       {formatCurrency(item.price)}
                     </span>
@@ -811,6 +860,79 @@ export function POSCart({
           receipt={currentReceipt}
         />
       )}
+
+      {/* Variant Picker Dialog */}
+      <Dialog
+        open={!!variantPickerProduct}
+        onOpenChange={(open) => !open && setVariantPickerProduct(null)}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Select Variant</DialogTitle>
+          </DialogHeader>
+          {variantPickerProduct && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 pb-3 border-b">
+                {variantPickerProduct.product_images?.[0]?.url && (
+                  <div className="relative h-14 w-14 rounded-lg overflow-hidden shrink-0 bg-muted">
+                    <Image
+                      src={variantPickerProduct.product_images[0].url}
+                      alt={variantPickerProduct.name}
+                      fill
+                      className="object-cover"
+                      sizes="56px"
+                    />
+                  </div>
+                )}
+                <div>
+                  <p className="font-semibold text-sm">
+                    {variantPickerProduct.name}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {variantPickerProduct.sku}
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {variantPickerProduct.product_variants?.map((variant) => {
+                  const label = variant.attributes
+                    ? Object.values(
+                        variant.attributes as Record<string, string>
+                      ).join(" / ")
+                    : variant.sku;
+                  const stock = variant.stock_quantity ?? 0;
+                  const outOfStock = stock === 0;
+                  return (
+                    <button
+                      key={variant.id}
+                      disabled={outOfStock}
+                      onClick={() => {
+                        addToCart(variantPickerProduct, variant.id);
+                        setVariantPickerProduct(null);
+                      }}
+                      className={`flex flex-col items-center justify-center gap-1 rounded-xl border-2 p-3 text-center transition-all ${
+                        outOfStock
+                          ? "cursor-not-allowed border-muted bg-muted/30 opacity-50"
+                          : "border-border hover:border-primary hover:bg-primary/5 cursor-pointer"
+                      }`}
+                    >
+                      <span className="text-sm font-semibold">{label}</span>
+                      <span className="text-base font-bold text-primary">
+                        {formatCurrency(
+                          variant.price ?? variantPickerProduct.base_price
+                        )}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {outOfStock ? "Out of stock" : `${stock} left`}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

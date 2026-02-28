@@ -239,13 +239,12 @@ export const Header = ({ user, unreadNotifCount = 0 }: HeaderProps) => {
                 >
                   <User className="h-4 w-4" />
                   {user.roles?.name === "admin" || user.roles?.name === "staff"
-                    ? "Admin Dashboard"
+                    ? "Admin Panel"
                     : "My Account"}
                 </Link>
                 <form action={signOut} className="w-full">
                   <button
                     type="submit"
-                    onClick={() => setMobileMenuOpen(false)}
                     className="flex w-full items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-gray-500 hover:bg-red-50 hover:text-red-600 transition-all"
                   >
                     <LogOut className="h-4 w-4" />

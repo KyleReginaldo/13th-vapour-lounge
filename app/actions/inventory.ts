@@ -12,7 +12,8 @@ import {
   type PaginatedResponse,
 } from "@/lib/actions/utils";
 import { logAudit } from "@/lib/auth/audit";
-import { requireRole } from "@/lib/auth/roles";
+import { requireClockedIn, requireRole } from "@/lib/auth/roles";
+import { NOTIF_TYPES } from "@/lib/constants/notifications";
 import { createClient } from "@/lib/supabase/server";
 import {
   inventoryBatchSchema,
@@ -22,13 +23,14 @@ import {
   type StockAdjustmentInput,
 } from "@/lib/validations/inventory";
 import { revalidatePath } from "next/cache";
+import { notifyActiveStaffOnly, notifyAdminsOnly } from "./notifications";
 
 /**
  * Create a new inventory batch
  */
 export const createInventoryBatch = withErrorHandling(
   async (input: InventoryBatchInput): Promise<ActionResponse> => {
-    await requireRole(["admin", "staff"]);
+    const actor = await requireClockedIn();
     const validated = validateInput(inventoryBatchSchema, input);
     const supabase = await createClient();
 
@@ -60,6 +62,22 @@ export const createInventoryBatch = withErrorHandling(
     });
 
     revalidatePath("/admin/inventory");
+
+    const _actorName =
+      `${(actor as any).first_name ?? ""} ${(actor as any).last_name ?? ""}`.trim() ||
+      (actor as any).email ||
+      "Staff";
+    void (
+      (actor as any).roles?.name === "admin"
+        ? notifyActiveStaffOnly
+        : notifyAdminsOnly
+    )({
+      title: `Inventory Batch Created`,
+      message: `${_actorName} created inventory batch #${batch.batch_number}.`,
+      type: NOTIF_TYPES.INVENTORY_BATCH_CREATED,
+      link: `/admin/inventory`,
+    });
+
     return success(batch, "Inventory batch created successfully");
   }
 );
@@ -72,7 +90,7 @@ export const updateInventoryBatch = withErrorHandling(
     id: string,
     input: Partial<InventoryBatchInput>
   ): Promise<ActionResponse> => {
-    await requireRole(["admin", "staff"]);
+    const actor = await requireClockedIn();
     const supabase = await createClient();
 
     // Get old value for audit
@@ -104,6 +122,22 @@ export const updateInventoryBatch = withErrorHandling(
     });
 
     revalidatePath("/admin/inventory");
+
+    const _actorNameU =
+      `${(actor as any).first_name ?? ""} ${(actor as any).last_name ?? ""}`.trim() ||
+      (actor as any).email ||
+      "Staff";
+    void (
+      (actor as any).roles?.name === "admin"
+        ? notifyActiveStaffOnly
+        : notifyAdminsOnly
+    )({
+      title: `Inventory Batch Updated`,
+      message: `${_actorNameU} updated inventory batch #${batch.batch_number}.`,
+      type: NOTIF_TYPES.INVENTORY_BATCH_UPDATED,
+      link: `/admin/inventory`,
+    });
+
     return success(batch, "Inventory batch updated successfully");
   }
 );
@@ -113,7 +147,7 @@ export const updateInventoryBatch = withErrorHandling(
  */
 export const deleteInventoryBatch = withErrorHandling(
   async (id: string): Promise<ActionResponse> => {
-    await requireRole(["admin"]);
+    const actor = await requireRole(["admin"]);
     const supabase = await createClient();
 
     const { data: batch } = await supabase
@@ -141,6 +175,19 @@ export const deleteInventoryBatch = withErrorHandling(
     });
 
     revalidatePath("/admin/inventory");
+
+    // Admin-only action → always notify clocked-in staff
+    const _actorNameD =
+      `${(actor as any).first_name ?? ""} ${(actor as any).last_name ?? ""}`.trim() ||
+      (actor as any).email ||
+      "Admin";
+    await notifyActiveStaffOnly({
+      title: `Inventory Batch Deleted`,
+      message: `${_actorNameD} deleted inventory batch #${batch.batch_number}.`,
+      type: NOTIF_TYPES.INVENTORY_BATCH_DELETED,
+      link: `/admin/inventory`,
+    });
+
     return success(null, "Inventory batch deleted successfully");
   }
 );
@@ -194,7 +241,7 @@ export const getInventory = withErrorHandling(
  */
 export const adjustInventoryQuantity = withErrorHandling(
   async (input: StockAdjustmentInput): Promise<ActionResponse> => {
-    await requireRole(["admin", "staff"]);
+    const actor = await requireClockedIn();
     const validated = validateInput(stockAdjustmentSchema, input);
     const supabase = await createClient();
 
@@ -228,12 +275,6 @@ export const adjustInventoryQuantity = withErrorHandling(
 
     if (updateError) return error(updateError.message);
 
-    // Get current user for performed_by
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return error("User not authenticated", ErrorCode.UNAUTHORIZED);
-
     // Record stock movement
     await supabase.from("stock_movements").insert({
       product_id: batch.product_id,
@@ -242,7 +283,7 @@ export const adjustInventoryQuantity = withErrorHandling(
       quantity_change: validated.adjustment,
       reason: validated.reason,
       reference_id: validated.batch_id,
-      performed_by: user.id,
+      performed_by: actor.id,
     } as any);
 
     await logAudit({
@@ -254,6 +295,23 @@ export const adjustInventoryQuantity = withErrorHandling(
     });
 
     revalidatePath("/admin/inventory");
+
+    const _actorNameA =
+      `${(actor as any).first_name ?? ""} ${(actor as any).last_name ?? ""}`.trim() ||
+      (actor as any).email ||
+      "Staff";
+    const _dir = validated.adjustment > 0 ? "added" : "removed";
+    void (
+      (actor as any).roles?.name === "admin"
+        ? notifyActiveStaffOnly
+        : notifyAdminsOnly
+    )({
+      title: `Inventory Adjusted`,
+      message: `${_actorNameA} ${_dir} ${Math.abs(validated.adjustment)} unit(s) (batch #${batch.batch_number}). Reason: ${validated.reason ?? "N/A"}.`,
+      type: NOTIF_TYPES.INVENTORY_ADJUSTED,
+      link: `/admin/inventory`,
+    });
+
     return success(updatedBatch, "Inventory adjusted successfully");
   }
 );

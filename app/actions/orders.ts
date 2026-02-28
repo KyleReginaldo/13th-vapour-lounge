@@ -12,7 +12,7 @@ import {
   withErrorHandling,
 } from "@/lib/actions/utils";
 import { logAudit } from "@/lib/auth/audit";
-import { requireRole } from "@/lib/auth/roles";
+import { requireClockedIn, requireRole } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
 import {
   cancelOrderSchema,
@@ -70,7 +70,7 @@ export const getOrders = withErrorHandling(
  */
 export const updateOrderStatus = withErrorHandling(
   async (id: string, statusInput: string): Promise<ActionResponse> => {
-    await requireRole(["admin", "staff"]);
+    await requireClockedIn();
     const validated = validateInput(updateOrderStatusSchema, {
       status: statusInput,
     });
@@ -121,7 +121,7 @@ export const updateOrderStatus = withErrorHandling(
  */
 export const updatePaymentStatus = withErrorHandling(
   async (id: string, paymentStatusInput: string): Promise<ActionResponse> => {
-    await requireRole(["admin", "staff"]);
+    await requireClockedIn();
     const validated = validateInput(updatePaymentStatusSchema, {
       payment_status: paymentStatusInput,
     });
@@ -153,7 +153,7 @@ export const updatePaymentStatus = withErrorHandling(
  */
 export const cancelOrder = withErrorHandling(
   async (id: string, reason: string): Promise<ActionResponse> => {
-    await requireRole(["admin", "staff"]);
+    await requireClockedIn();
     const validated = validateInput(cancelOrderSchema, { reason });
     const supabase = await createClient();
 
@@ -257,7 +257,7 @@ export const cancelOrderByCustomer = withErrorHandling(
  */
 export const assignTrackingNumber = withErrorHandling(
   async (id: string, trackingNumber: string): Promise<ActionResponse> => {
-    await requireRole(["admin", "staff"]);
+    await requireClockedIn();
     const validated = validateInput(trackingNumberSchema, {
       tracking_number: trackingNumber,
     });

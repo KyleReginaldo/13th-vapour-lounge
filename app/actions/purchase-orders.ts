@@ -12,7 +12,8 @@ import {
   type PaginatedResponse,
 } from "@/lib/actions/utils";
 import { logAudit } from "@/lib/auth/audit";
-import { requireRole } from "@/lib/auth/roles";
+import { requireClockedIn, requireRole } from "@/lib/auth/roles";
+import { NOTIF_TYPES } from "@/lib/constants/notifications";
 import { createClient } from "@/lib/supabase/server";
 import {
   purchaseOrderSchema,
@@ -20,13 +21,14 @@ import {
   type PurchaseOrderInput,
 } from "@/lib/validations/purchase-order";
 import { revalidatePath } from "next/cache";
+import { notifyActiveStaffOnly, notifyAdminsOnly } from "./notifications";
 
 /**
  * Create a new purchase order
  */
 export const createPurchaseOrder = withErrorHandling(
   async (input: PurchaseOrderInput): Promise<ActionResponse> => {
-    const user = await requireRole(["admin", "staff"]);
+    const user = await requireClockedIn();
     const validated = validateInput(purchaseOrderSchema, input);
     const supabase = await createClient();
 
@@ -92,6 +94,22 @@ export const createPurchaseOrder = withErrorHandling(
     });
 
     revalidatePath("/admin/purchase-orders");
+
+    const _actorName =
+      `${(user as any).first_name ?? ""} ${(user as any).last_name ?? ""}`.trim() ||
+      (user as any).email ||
+      "Staff";
+    void (
+      (user as any).roles?.name === "admin"
+        ? notifyActiveStaffOnly
+        : notifyAdminsOnly
+    )({
+      title: `New Purchase Order: ${po.po_number}`,
+      message: `${_actorName} created purchase order ${po.po_number} (Total: ₱${total.toFixed(2)}).`,
+      type: NOTIF_TYPES.PO_CREATED,
+      link: `/admin/purchase-orders`,
+    });
+
     return success(po, "Purchase order created successfully");
   }
 );
@@ -101,7 +119,7 @@ export const createPurchaseOrder = withErrorHandling(
  */
 export const updatePurchaseOrderStatus = withErrorHandling(
   async (id: string, status: string): Promise<ActionResponse> => {
-    await requireRole(["admin", "staff"]);
+    const actor = await requireClockedIn();
     const validated = validateInput(updatePOStatusSchema, { status });
     const supabase = await createClient();
 
@@ -133,6 +151,22 @@ export const updatePurchaseOrderStatus = withErrorHandling(
     });
 
     revalidatePath("/admin/purchase-orders");
+
+    const _actorNameS =
+      `${(actor as any).first_name ?? ""} ${(actor as any).last_name ?? ""}`.trim() ||
+      (actor as any).email ||
+      "Staff";
+    void (
+      (actor as any).roles?.name === "admin"
+        ? notifyActiveStaffOnly
+        : notifyAdminsOnly
+    )({
+      title: `PO Status Updated: ${po.po_number}`,
+      message: `${_actorNameS} changed PO ${po.po_number} from "${oldPO.status}" → "${validated.status}".`,
+      type: NOTIF_TYPES.PO_STATUS_CHANGED,
+      link: `/admin/purchase-orders`,
+    });
+
     return success(po, "Purchase order status updated");
   }
 );
@@ -142,7 +176,7 @@ export const updatePurchaseOrderStatus = withErrorHandling(
  */
 export const receivePurchaseOrder = withErrorHandling(
   async (id: string): Promise<ActionResponse> => {
-    await requireRole(["admin", "staff"]);
+    const actor = await requireClockedIn();
     const supabase = await createClient();
 
     // Get PO with items
@@ -218,6 +252,22 @@ export const receivePurchaseOrder = withErrorHandling(
     revalidatePath("/admin/purchase-orders");
     revalidatePath("/admin/inventory");
     revalidatePath("/admin/products");
+
+    const _actorNameR =
+      `${(actor as any).first_name ?? ""} ${(actor as any).last_name ?? ""}`.trim() ||
+      (actor as any).email ||
+      "Staff";
+    void (
+      (actor as any).roles?.name === "admin"
+        ? notifyActiveStaffOnly
+        : notifyAdminsOnly
+    )({
+      title: `PO Received: ${po.po_number}`,
+      message: `${_actorNameR} received purchase order ${po.po_number} and updated inventory.`,
+      type: NOTIF_TYPES.PO_RECEIVED,
+      link: `/admin/purchase-orders`,
+    });
+
     return success(updatedPO, "Purchase order received and inventory updated");
   }
 );
@@ -300,7 +350,7 @@ export const getPurchaseOrderById = withErrorHandling(
  */
 export const deletePurchaseOrder = withErrorHandling(
   async (id: string): Promise<ActionResponse> => {
-    await requireRole(["admin"]);
+    const actor = await requireRole(["admin"]);
     const supabase = await createClient();
 
     const { data: po } = await supabase
@@ -333,6 +383,19 @@ export const deletePurchaseOrder = withErrorHandling(
     });
 
     revalidatePath("/admin/purchase-orders");
+
+    // Admin-only action → always notify clocked-in staff
+    const _actorNameC =
+      `${(actor as any).first_name ?? ""} ${(actor as any).last_name ?? ""}`.trim() ||
+      (actor as any).email ||
+      "Admin";
+    await notifyActiveStaffOnly({
+      title: `PO Cancelled: ${po.po_number}`,
+      message: `${_actorNameC} cancelled purchase order ${po.po_number}.`,
+      type: NOTIF_TYPES.PO_CANCELLED,
+      link: `/admin/purchase-orders`,
+    });
+
     return success(null, "Purchase order cancelled");
   }
 );

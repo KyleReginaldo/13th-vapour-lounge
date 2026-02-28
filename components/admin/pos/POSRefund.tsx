@@ -297,6 +297,7 @@ export function POSRefund({ onRefundComplete }: POSRefundProps) {
                           })
                         }
                         className="h-8"
+                        placeholder="1"
                       />
                     </div>
 

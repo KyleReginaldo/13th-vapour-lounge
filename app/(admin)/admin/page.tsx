@@ -32,6 +32,17 @@ async function getDashboardStats() {
     .select("*", { count: "exact", head: true })
     .lt("stock_quantity", 10);
 
+  // Get recent notifications for activity feed
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const { data: recentActivity } = await supabase
+    .from("notifications")
+    .select("*")
+    .eq("user_id", user?.id || "")
+    .order("created_at", { ascending: false })
+    .limit(5);
+
   // Get today's sales
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -68,6 +79,7 @@ async function getDashboardStats() {
     lowStockCount: lowStockCount || 0,
     todaySales,
     averageOrderValue,
+    recentActivity: recentActivity || [],
   };
 }
 

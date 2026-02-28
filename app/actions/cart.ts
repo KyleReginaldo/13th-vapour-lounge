@@ -282,15 +282,13 @@ export const getCart = withErrorHandling(async (): Promise<ActionResponse> => {
     return sum + price * item.quantity;
   }, 0);
 
-  const shipping = 50;
-  const total = subtotal + shipping;
+  const total = subtotal;
 
   return success({
     items: data,
     summary: {
       subtotal,
       tax: 0,
-      shipping,
       total,
       itemCount: data.reduce((sum, item) => sum + item.quantity, 0),
     },
@@ -403,5 +401,57 @@ export const clearCart = withErrorHandling(
 
     revalidatePath("/cart");
     return success(null, "Cart cleared");
+  }
+);
+
+/**
+ * Get current prices for a list of products/variants (public, no auth required).
+ * Used to refresh stale guest-cart prices.
+ */
+export const getProductPrices = withErrorHandling(
+  async (
+    items: { productId: string; variantId?: string }[]
+  ): Promise<ActionResponse> => {
+    if (!items.length) return success([]);
+
+    const supabase = await createClient();
+
+    const productIds = [...new Set(items.map((i) => i.productId))];
+    const variantIds = items
+      .map((i) => i.variantId)
+      .filter((v): v is string => !!v);
+
+    // Fetch products
+    const { data: products } = await supabase
+      .from("products")
+      .select("id, base_price")
+      .in("id", productIds);
+
+    // Fetch variants (if any)
+    let variants: { id: string; price: number | null }[] = [];
+    if (variantIds.length) {
+      const { data } = await supabase
+        .from("product_variants")
+        .select("id, price")
+        .in("id", variantIds);
+      variants = data ?? [];
+    }
+
+    const productMap = new Map(
+      (products ?? []).map((p) => [p.id, p.base_price])
+    );
+    const variantMap = new Map(variants.map((v) => [v.id, v.price]));
+
+    const prices = items.map((item) => ({
+      productId: item.productId,
+      variantId: item.variantId ?? null,
+      currentPrice: item.variantId
+        ? (variantMap.get(item.variantId) ??
+          productMap.get(item.productId) ??
+          null)
+        : (productMap.get(item.productId) ?? null),
+    }));
+
+    return success(prices);
   }
 );

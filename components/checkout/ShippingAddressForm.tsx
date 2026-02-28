@@ -371,7 +371,7 @@ export function ShippingAddressForm({
           {/* City, State, Postal Code */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium">Location</Label>
+              <Label>Location</Label>
               <button
                 type="button"
                 onClick={detectLocation}

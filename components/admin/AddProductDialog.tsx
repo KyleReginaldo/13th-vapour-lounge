@@ -4,7 +4,7 @@ import { getBrands, getCategories } from "@/app/actions/categories-brands";
 import { createProductVariant } from "@/app/actions/product-variants";
 import { createProduct } from "@/app/actions/products";
 import { ImageUpload } from "@/components/shared/ImageUpload";
-import { XMarkIcon } from "@heroicons/react/24/outline";
+import { InformationCircleIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -13,6 +13,13 @@ interface AddProductDialogProps {
   isOpen: boolean;
   onClose: () => void;
 }
+
+type VariantRow = {
+  uid: string;
+  label: string;
+  price: string;
+  stock: string;
+};
 
 export function AddProductDialog({ isOpen, onClose }: AddProductDialogProps) {
   const router = useRouter();
@@ -25,6 +32,30 @@ export function AddProductDialog({ isOpen, onClose }: AddProductDialogProps) {
   const [categories, setCategories] = useState<
     Array<{ id: string; name: string }>
   >([]);
+
+  // Pricing variant state
+  const [hasPricingVariants, setHasPricingVariants] = useState(false);
+  const [variantRows, setVariantRows] = useState<VariantRow[]>([
+    { uid: crypto.randomUUID(), label: "", price: "", stock: "" },
+  ]);
+
+  const addVariantRow = () =>
+    setVariantRows((prev) => [
+      ...prev,
+      { uid: crypto.randomUUID(), label: "", price: "", stock: "" },
+    ]);
+
+  const removeVariantRow = (uid: string) =>
+    setVariantRows((prev) => prev.filter((r) => r.uid !== uid));
+
+  const updateVariantRow = (
+    uid: string,
+    field: keyof Omit<VariantRow, "uid">,
+    value: string
+  ) =>
+    setVariantRows((prev) =>
+      prev.map((r) => (r.uid === uid ? { ...r, [field]: value } : r))
+    );
 
   // Spec / attributes state
   const [vapeType, setVapeType] = useState("");
@@ -91,20 +122,58 @@ export function AddProductDialog({ isOpen, onClose }: AddProductDialogProps) {
     if (specCoil.trim()) attributes.coil_compatibility = specCoil.trim();
     const hasAttributes = Object.keys(attributes).length > 0;
 
+    // Validate pricing variant rows if enabled
+    if (hasPricingVariants) {
+      for (const row of variantRows) {
+        if (!row.label.trim()) {
+          toast.error('Each variant must have a label (e.g. "30ml")');
+          setLoading(false);
+          return;
+        }
+        if (
+          !row.price ||
+          isNaN(parseFloat(row.price)) ||
+          parseFloat(row.price) < 0
+        ) {
+          toast.error(`Variant "${row.label}" has an invalid price`);
+          setLoading(false);
+          return;
+        }
+        if (
+          !row.stock ||
+          isNaN(parseInt(row.stock)) ||
+          parseInt(row.stock) < 0
+        ) {
+          toast.error(`Variant "${row.label}" has an invalid stock quantity`);
+          setLoading(false);
+          return;
+        }
+      }
+    }
+
+    // Compute price & quantity from variants when applicable
+    const variantPrices = variantRows.map((r) => parseFloat(r.price));
+    const basePrice = hasPricingVariants
+      ? Math.min(...variantPrices)
+      : parseFloat(formData.get("price") as string);
+    const totalStock = hasPricingVariants
+      ? variantRows.reduce((s, r) => s + parseInt(r.stock), 0)
+      : parseInt(formData.get("quantity") as string);
+
     const data = {
       name: formData.get("name") as string,
       sku,
       description: (formData.get("description") as string) || undefined,
       category: formData.get("category") as string,
       brand_id: (formData.get("brand_id") as string) || null,
-      price: parseFloat(formData.get("price") as string),
+      price: basePrice,
       compare_at_price: formData.get("compare_at_price")
         ? parseFloat(formData.get("compare_at_price") as string)
         : undefined,
       cost_price: formData.get("cost_price")
         ? parseFloat(formData.get("cost_price") as string)
         : undefined,
-      quantity: parseInt(formData.get("quantity") as string),
+      quantity: totalStock,
       images: images,
       low_stock_threshold: formData.get("low_stock_threshold")
         ? parseInt(formData.get("low_stock_threshold") as string)
@@ -114,8 +183,8 @@ export function AddProductDialog({ isOpen, onClose }: AddProductDialogProps) {
         : 5,
       barcode: (formData.get("barcode") as string) || undefined,
       qr_code: qrCode || undefined,
-      product_type: hasAttributes ? "variant" : "simple",
-      has_variants: hasAttributes,
+      product_type: hasPricingVariants || hasAttributes ? "variant" : "simple",
+      has_variants: hasPricingVariants || hasAttributes,
       track_inventory: formData.get("track_inventory") === "on",
       is_published: formData.get("is_published") === "on",
       is_featured: formData.get("is_featured") === "on",
@@ -129,20 +198,37 @@ export function AddProductDialog({ isOpen, onClose }: AddProductDialogProps) {
       return;
     }
 
-    // If spec attributes exist, create the default variant
-    if (hasAttributes && result.data?.id) {
-      const variantResult = await createProductVariant({
-        productId: result.data.id,
-        sku: `${sku}-001`,
-        attributes,
-        price: parseFloat(formData.get("price") as string),
-        stock_quantity: parseInt(formData.get("quantity") as string),
-        is_active: true,
-      });
-      if (!variantResult.success) {
-        toast.warning(
-          "Product created but failed to save specifications. Edit the product to add them manually."
-        );
+    if (result.data?.id) {
+      if (hasPricingVariants) {
+        // Create one variant per row (with optional spec attrs merged in)
+        for (let i = 0; i < variantRows.length; i++) {
+          const row = variantRows[i];
+          const varAttrs: Record<string, string> = { size: row.label };
+          if (hasAttributes) Object.assign(varAttrs, attributes);
+          await createProductVariant({
+            productId: result.data.id,
+            sku: `${sku}-${String(i + 1).padStart(3, "0")}`,
+            attributes: varAttrs,
+            price: parseFloat(row.price),
+            stock_quantity: parseInt(row.stock),
+            is_active: true,
+          });
+        }
+      } else if (hasAttributes) {
+        // Create single default spec variant (original behaviour)
+        const variantResult = await createProductVariant({
+          productId: result.data.id,
+          sku: `${sku}-001`,
+          attributes,
+          price: basePrice,
+          stock_quantity: totalStock,
+          is_active: true,
+        });
+        if (!variantResult.success) {
+          toast.warning(
+            "Product created but failed to save specifications. Edit the product to add them manually."
+          );
+        }
       }
     }
 
@@ -154,6 +240,10 @@ export function AddProductDialog({ isOpen, onClose }: AddProductDialogProps) {
     setSlug("");
     setQrCode("");
     setImages([]);
+    setHasPricingVariants(false);
+    setVariantRows([
+      { uid: crypto.randomUUID(), label: "", price: "", stock: "" },
+    ]);
     setVapeType("");
     setSpecFlavor("");
     setSpecVolume("");
@@ -438,62 +528,226 @@ export function AddProductDialog({ isOpen, onClose }: AddProductDialogProps) {
               </div>
             </div>
 
-            {/* Pricing */}
+            {/* Pricing & Variants */}
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">
-                Pricing
-              </h3>
-
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Price (₱) *
-                  </label>
+              <div className="flex items-center justify-between border-b pb-2">
+                <h3 className="text-lg font-semibold text-gray-900">Pricing</h3>
+                <label className="flex items-center gap-2 cursor-pointer">
                   <input
-                    type="number"
-                    name="price"
-                    required
-                    step="0.01"
-                    min="0"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    placeholder="0.00"
+                    type="checkbox"
+                    checked={hasPricingVariants}
+                    onChange={(e) => setHasPricingVariants(e.target.checked)}
+                    className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
                   />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Compare at Price (₱)
-                  </label>
-                  <input
-                    type="number"
-                    name="compare_at_price"
-                    step="0.01"
-                    min="0"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    placeholder="0.00"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Original price for discount display
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Cost Price (₱)
-                  </label>
-                  <input
-                    type="number"
-                    name="cost_price"
-                    step="0.01"
-                    min="0"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    placeholder="0.00"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Your cost for profit tracking
-                  </p>
-                </div>
+                  <span className="text-sm font-medium text-gray-700">
+                    Has multiple sizes / variants
+                  </span>
+                </label>
               </div>
+
+              {hasPricingVariants ? (
+                /* Variant pricing table */
+                <div className="space-y-3">
+                  <p className="text-xs text-gray-500">
+                    Add a row per size/variant. The lowest price will be used as
+                    the product's base price.
+                  </p>
+                  <div className="rounded-md border border-gray-200 overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-3 py-2 text-left font-medium text-gray-600">
+                            Label (e.g. 30ml)
+                          </th>
+                          <th className="px-3 py-2 text-left font-medium text-gray-600">
+                            Price (₱)
+                          </th>
+                          <th className="px-3 py-2 text-left font-medium text-gray-600">
+                            Stock
+                          </th>
+                          <th className="px-3 py-2 w-10" />
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {variantRows.map((row) => (
+                          <tr key={row.uid}>
+                            <td className="px-3 py-2">
+                              <input
+                                type="text"
+                                value={row.label}
+                                onChange={(e) =>
+                                  updateVariantRow(
+                                    row.uid,
+                                    "label",
+                                    e.target.value
+                                  )
+                                }
+                                className="w-full px-2 py-1.5 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                placeholder="e.g. 30ml"
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="number"
+                                value={row.price}
+                                onChange={(e) =>
+                                  updateVariantRow(
+                                    row.uid,
+                                    "price",
+                                    e.target.value
+                                  )
+                                }
+                                className="w-full px-2 py-1.5 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                placeholder="0.00"
+                                step="0.01"
+                                min="0"
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="number"
+                                value={row.stock}
+                                onChange={(e) =>
+                                  updateVariantRow(
+                                    row.uid,
+                                    "stock",
+                                    e.target.value
+                                  )
+                                }
+                                className="w-full px-2 py-1.5 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                placeholder="0"
+                                min="0"
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              {variantRows.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => removeVariantRow(row.uid)}
+                                  className="text-red-400 hover:text-red-600 transition-colors"
+                                >
+                                  &times;
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addVariantRow}
+                    className="text-sm text-purple-600 hover:text-purple-800 font-medium"
+                  >
+                    + Add variant
+                  </button>
+
+                  {/* hidden price/quantity so form validation isn't triggered */}
+                  <input type="hidden" name="price" value="0" />
+                  <input type="hidden" name="quantity" value="0" />
+
+                  {/* Compare at / Cost still useful */}
+                  <div className="grid grid-cols-2 gap-4 pt-1">
+                    <div>
+                      <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-1">
+                        Compare at Price (₱)
+                        <span className="group relative">
+                          <InformationCircleIcon className="h-4 w-4 text-gray-400 cursor-help" />
+                          <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-56 rounded-md bg-gray-800 px-2.5 py-1.5 text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity z-10 shadow-lg">
+                            The original &ldquo;was&rdquo; price shown crossed
+                            out next to the sale price (e.g.{" "}
+                            <span className="line-through">₱500</span> ₱350).
+                            Does not affect the actual selling price.
+                          </span>
+                        </span>
+                      </label>
+                      <input
+                        type="number"
+                        name="compare_at_price"
+                        step="0.01"
+                        min="0"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Cost Price (₱)
+                      </label>
+                      <input
+                        type="number"
+                        name="cost_price"
+                        step="0.01"
+                        min="0"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* Single price + quantity */
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Price (₱) *
+                    </label>
+                    <input
+                      type="number"
+                      name="price"
+                      required
+                      step="0.01"
+                      min="0"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      placeholder="0.00"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-1">
+                      Compare at Price (₱)
+                      <span className="group relative">
+                        <InformationCircleIcon className="h-4 w-4 text-gray-400 cursor-help" />
+                        <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-56 rounded-md bg-gray-800 px-2.5 py-1.5 text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity z-10 shadow-lg">
+                          The original &ldquo;was&rdquo; price shown crossed out
+                          next to the sale price (e.g.{" "}
+                          <span className="line-through">₱500</span> ₱350). Does
+                          not affect the actual selling price.
+                        </span>
+                      </span>
+                    </label>
+                    <input
+                      type="number"
+                      name="compare_at_price"
+                      step="0.01"
+                      min="0"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      placeholder="0.00"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Original price for discount display
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Cost Price (₱)
+                    </label>
+                    <input
+                      type="number"
+                      name="cost_price"
+                      step="0.01"
+                      min="0"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      placeholder="0.00"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Your cost for profit tracking
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Inventory */}
@@ -503,19 +757,21 @@ export function AddProductDialog({ isOpen, onClose }: AddProductDialogProps) {
               </h3>
 
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Quantity *
-                  </label>
-                  <input
-                    type="number"
-                    name="quantity"
-                    required
-                    min="0"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    placeholder="0"
-                  />
-                </div>
+                {!hasPricingVariants && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Quantity *
+                    </label>
+                    <input
+                      type="number"
+                      name="quantity"
+                      required
+                      min="0"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      placeholder="0"
+                    />
+                  </div>
+                )}
 
                 <div className="flex items-center pt-6">
                   <label className="flex items-center gap-2">
@@ -540,6 +796,7 @@ export function AddProductDialog({ isOpen, onClose }: AddProductDialogProps) {
                     name="low_stock_threshold"
                     min="1"
                     defaultValue="10"
+                    placeholder="10"
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
                   />
                   <p className="text-xs text-gray-500 mt-1">
@@ -556,6 +813,7 @@ export function AddProductDialog({ isOpen, onClose }: AddProductDialogProps) {
                     name="critical_stock_threshold"
                     min="1"
                     defaultValue="5"
+                    placeholder="5"
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
                   />
                   <p className="text-xs text-gray-500 mt-1">

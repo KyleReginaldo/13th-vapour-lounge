@@ -142,7 +142,14 @@ export function ReceiptPrinter({
               {receipt.items.map((item, index) => (
                 <div key={index} className="space-y-1">
                   <div className="flex justify-between">
-                    <span className="flex-1">{item.name}</span>
+                    <span className="flex-1">
+                      {item.name}
+                      {item.variantLabel && (
+                        <span className="block text-[10px] opacity-60">
+                          {item.variantLabel}
+                        </span>
+                      )}
+                    </span>
                   </div>
                   <div className="flex justify-between text-xs">
                     <span>

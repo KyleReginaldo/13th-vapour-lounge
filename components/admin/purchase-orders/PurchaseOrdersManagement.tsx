@@ -32,6 +32,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { IconInput } from "@/components/ui/icon-input";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -381,15 +382,13 @@ export function PurchaseOrdersManagement({
 
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-4">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search PO number or supplier..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
-        </div>
+        <IconInput
+          icon={Search}
+          containerClassName="flex-1"
+          placeholder="Search PO number or supplier..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
         <Select
           value={statusFilter}
           onValueChange={(value: POFilter) => setStatusFilter(value)}
@@ -789,6 +788,7 @@ export function PurchaseOrdersManagement({
                               )
                             }
                             className="h-8 text-sm"
+                            placeholder="1"
                           />
                         </TableCell>
                         <TableCell className="p-1">
@@ -805,6 +805,7 @@ export function PurchaseOrdersManagement({
                               )
                             }
                             className="h-8 text-sm"
+                            placeholder="0.00"
                           />
                         </TableCell>
                         <TableCell className="p-1 text-right font-medium text-sm">

@@ -1,6 +1,8 @@
 "use client";
 
+import { getProductPrices } from "@/app/actions/cart";
 import { uploadPaymentProof } from "@/app/actions/images";
+import { notifyAdminAndActiveStaff } from "@/app/actions/notifications";
 import { getPublicShippingSettings } from "@/app/actions/settings";
 import { CheckoutStepper } from "@/components/checkout/CheckoutStepper";
 import { OrderSummary } from "@/components/checkout/OrderSummary";
@@ -14,8 +16,9 @@ import {
 } from "@/components/checkout/ShippingAddressForm";
 import { Button } from "@/components/ui/button";
 import type { Database } from "@/database.types";
+import { adminNewOrderTemplate } from "@/lib/email/templates";
 import { createClient } from "@/lib/supabase/client";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -42,10 +45,6 @@ export default function CheckoutPage() {
   // Cart Data
   const [cartItems, setCartItems] = useState<Cart[]>([]);
 
-  // Shipping settings from DB
-  const [shippingFee, setShippingFee] = useState(50);
-  const [freeShippingThreshold, setFreeShippingThreshold] = useState(0);
-
   // Shipping
   const [savedAddresses, setSavedAddresses] = useState<ShippingAddress[]>([]);
   const [selectedAddress, setSelectedAddress] = useState<
@@ -63,6 +62,13 @@ export default function CheckoutPage() {
   const [paymentProofFile, setPaymentProofFile] = useState<File | null>(null);
   const [paymentReferenceNumber, setPaymentReferenceNumber] = useState("");
 
+  // Shipping settings
+  const [shippingFee, setShippingFee] = useState(0);
+  const [freeShippingThreshold, setFreeShippingThreshold] = useState(0);
+
+  // Price mismatch warning
+  const [priceWarning, setPriceWarning] = useState<string | null>(null);
+
   // Calculations
   const subtotal = cartItems.reduce((sum, item) => {
     const price = item.variant?.price || item.product.base_price;
@@ -76,19 +82,22 @@ export default function CheckoutPage() {
   const tax = 0;
   const total = subtotal + shippingCost;
 
-  // Load cart items, saved addresses, and shipping settings
+  // Load shipping settings
+  useEffect(() => {
+    async function loadShippingSettings() {
+      const result = await getPublicShippingSettings();
+      if (result?.success && result.data) {
+        setShippingFee(result.data.shipping_fee ?? 0);
+        setFreeShippingThreshold(result.data.free_shipping_threshold ?? 0);
+      }
+    }
+    loadShippingSettings();
+  }, []);
+
+  // Load cart items, saved addresses
   useEffect(() => {
     async function loadCheckoutData() {
       const supabase = createClient();
-
-      // Fetch shipping settings
-      const shippingResult = await getPublicShippingSettings();
-      if (shippingResult?.success && shippingResult.data) {
-        setShippingFee(shippingResult.data.shipping_fee ?? 50);
-        setFreeShippingThreshold(
-          shippingResult.data.free_shipping_threshold ?? 0
-        );
-      }
 
       // Get current user
       const {
@@ -331,6 +340,69 @@ export default function CheckoutPage() {
     setIsSubmitting(true);
 
     try {
+      // Check for price changes before submitting
+      const priceResult = await getProductPrices(
+        cartItems.map((item) => ({
+          productId: item.product_id,
+          variantId: item.variant_id ?? undefined,
+        }))
+      );
+
+      if (priceResult?.success && priceResult.data) {
+        const prices = priceResult.data as {
+          productId: string;
+          variantId: string | null;
+          currentPrice: number | null;
+        }[];
+
+        const changed: string[] = [];
+        for (const item of cartItems) {
+          const displayedPrice = item.variant?.price || item.product.base_price;
+          const match = prices.find(
+            (p) =>
+              p.productId === item.product_id &&
+              (p.variantId ?? null) === (item.variant_id ?? null)
+          );
+          if (
+            match &&
+            match.currentPrice !== null &&
+            match.currentPrice !== displayedPrice
+          ) {
+            changed.push(item.product.name);
+          }
+        }
+
+        if (changed.length > 0) {
+          setPriceWarning(
+            `Prices have changed for: ${changed.join(", ")}. Please review your updated order totals.`
+          );
+
+          // Re-fetch cart to get updated prices
+          const supabase = createClient();
+          const {
+            data: { user },
+          } = await supabase.auth.getUser();
+          if (user) {
+            const { data: freshCart } = await supabase
+              .from("carts")
+              .select(
+                `*, product:products (*, product_images (*)), variant:product_variants (*)`
+              )
+              .eq("user_id", user.id)
+              .order("created_at", { ascending: false });
+            if (freshCart && freshCart.length > 0) {
+              setCartItems(freshCart as Cart[]);
+            }
+          }
+
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
+      // Clear any previous warning
+      setPriceWarning(null);
+
       const supabase = createClient();
       const {
         data: { user },
@@ -419,6 +491,25 @@ export default function CheckoutPage() {
       // Clear cart
       await supabase.from("carts").delete().eq("user_id", user.id);
 
+      // Notify admin + active staff
+      await notifyAdminAndActiveStaff({
+        title: `New Order ${order.order_number}`,
+        message: `A new order of ₱${total.toFixed(2)} (${cartItems.length} item${
+          cartItems.length !== 1 ? "s" : ""
+        }) has been placed.`,
+        type: "new_order",
+        link: `/admin/orders?order=${order.order_number}`,
+        emailSettingKey: "email_order_notifications",
+        emailSubject: `New Order ${order.order_number} — ₱${total.toFixed(2)}`,
+        emailHtml: adminNewOrderTemplate({
+          orderNumber: order.order_number,
+          customerName: user.email ?? "Customer",
+          total,
+          itemCount: cartItems.length,
+          orderUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/admin/orders?order=${order.order_number}`,
+        }),
+      });
+
       // Redirect to confirmation
       router.push(`/checkout/confirmation?order=${order.order_number}`);
     } catch (error) {
@@ -457,6 +548,25 @@ export default function CheckoutPage() {
             Checkout
           </h1>
         </div>
+
+        {/* Price Warning Banner */}
+        {priceWarning && (
+          <div className="mb-6 flex items-start gap-3 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3">
+            <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-amber-800">
+                Prices Updated
+              </p>
+              <p className="text-sm text-amber-700 mt-0.5">{priceWarning}</p>
+            </div>
+            <button
+              onClick={() => setPriceWarning(null)}
+              className="ml-auto text-amber-600 hover:text-amber-800"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* Stepper */}
         <div className="mb-8 bg-white rounded-xl shadow-sm border p-6">

@@ -2,11 +2,10 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Eye, EyeOff } from "lucide-react";
+import { PasswordInput } from "@/components/ui/password-input";
 import { useState } from "react";
 
 const SignUp = () => {
-  const [hide, setHide] = useState(true);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [middleName, setMiddleName] = useState("");
@@ -140,55 +139,29 @@ const SignUp = () => {
           <Label htmlFor="password" className="mb-1">
             Password<span className="text-red-500">*</span>
           </Label>
-          <div className="relative mb-4">
-            <Input
-              id="password"
-              placeholder="Enter password"
-              type={hide ? "password" : "text"}
-              required
-              value={password}
-              onChange={(e) => {
-                setPassword(e.target.value);
-              }}
-            />
-            {hide ? (
-              <Eye
-                className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer h-4 w-4"
-                onClick={() => setHide(!hide)}
-              />
-            ) : (
-              <EyeOff
-                className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer h-4 w-4"
-                onClick={() => setHide(!hide)}
-              />
-            )}
-          </div>
+          <PasswordInput
+            id="password"
+            placeholder="Enter password"
+            required
+            className="mb-4"
+            value={password}
+            onChange={(e) => {
+              setPassword(e.target.value);
+            }}
+          />
           <Label htmlFor="confirmPassword" className="mb-1">
             Confirm Password<span className="text-red-500">*</span>
           </Label>
-          <div className="relative mb-4">
-            <Input
-              id="confirmPassword"
-              placeholder="Enter confirm password"
-              type={hide ? "password" : "text"}
-              required
-              value={confirmPassword}
-              onChange={(e) => {
-                setConfirmPassword(e.target.value);
-              }}
-            />
-            {hide ? (
-              <Eye
-                className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer h-4 w-4"
-                onClick={() => setHide(!hide)}
-              />
-            ) : (
-              <EyeOff
-                className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer h-4 w-4"
-                onClick={() => setHide(!hide)}
-              />
-            )}
-          </div>
+          <PasswordInput
+            id="confirmPassword"
+            placeholder="Enter confirm password"
+            required
+            className="mb-4"
+            value={confirmPassword}
+            onChange={(e) => {
+              setConfirmPassword(e.target.value);
+            }}
+          />
           <Button className="w-full" type="submit">
             Sign Up
           </Button>

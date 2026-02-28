@@ -9,10 +9,15 @@ import {
 } from "@/components/ui/sheet";
 import { useCart } from "@/lib/queries/cart";
 import { useCartStore } from "@/lib/stores/cart-store";
-import { useGuestCart } from "@/lib/stores/guest-cart-store";
+import {
+  refreshGuestCartPrices,
+  useGuestCart,
+} from "@/lib/stores/guest-cart-store";
 import { formatCurrency } from "@/lib/utils";
 import { Loader2, LogIn, ShoppingBag } from "lucide-react";
 import Link from "next/link";
+import { useEffect, useRef } from "react";
+import { toast } from "sonner";
 import { CartItem } from "./CartItem";
 import { GuestCartItem } from "./GuestCartItem";
 import { OrderSummary } from "./OrderSummary";
@@ -21,9 +26,28 @@ export const CartDrawer = () => {
   const { isCartOpen, closeCart } = useCartStore();
   const { data: cart, isLoading, isError } = useCart();
   const guestItems = useGuestCart((s) => s.items);
+  const hasRefreshed = useRef(false);
 
   // cart === null → unauthenticated (guest mode)
   const isGuest = cart === null;
+
+  // Refresh guest cart prices when drawer opens
+  useEffect(() => {
+    if (!isCartOpen || !isGuest || guestItems.length === 0) {
+      hasRefreshed.current = false;
+      return;
+    }
+    if (hasRefreshed.current) return;
+    hasRefreshed.current = true;
+
+    refreshGuestCartPrices().then((changes) => {
+      if (changes.length > 0) {
+        toast.info(
+          `Price${changes.length > 1 ? "s" : ""} updated for ${changes.map((c) => c.name).join(", ")}`
+        );
+      }
+    });
+  }, [isCartOpen, isGuest, guestItems.length]);
 
   const guestSubtotal = guestItems.reduce(
     (sum, i) => sum + i.price * i.quantity,

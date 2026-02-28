@@ -26,6 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { IconInput } from "@/components/ui/icon-input";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -299,15 +300,13 @@ export function CategoriesManagement({
       <Card>
         <CardHeader>
           <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search by name or slug…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
-              />
-            </div>
+            <IconInput
+              icon={Search}
+              containerClassName="flex-1"
+              placeholder="Search by name or slug…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
             <p className="text-sm text-muted-foreground shrink-0">
               {filtered.length} of {categories.length} categories
             </p>
@@ -512,6 +511,7 @@ export function CategoriesManagement({
                   }))
                 }
                 min={0}
+                placeholder="0"
               />
               <p className="text-xs text-muted-foreground">
                 Lower numbers appear first.

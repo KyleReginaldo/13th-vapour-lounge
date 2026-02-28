@@ -21,6 +21,7 @@ interface CartItemProps {
     product_variants?: {
       id: string;
       price: number;
+      stock_quantity?: number | null;
       attributes: any;
     } | null;
   };
@@ -36,6 +37,7 @@ export const CartItem = ({ item, className }: CartItemProps) => {
   const variant = item.product_variants;
   const price = variant?.price || product.base_price;
   const subtotal = price * item.quantity;
+  const stockLimit = variant?.stock_quantity ?? null;
 
   // Get primary image or first image
   const primaryImage = product.product_images?.find((img) => img.is_primary);
@@ -135,7 +137,10 @@ export const CartItem = ({ item, className }: CartItemProps) => {
             </span>
             <button
               onClick={() => handleQuantityChange(item.quantity + 1)}
-              disabled={updateCartItem.isPending}
+              disabled={
+                updateCartItem.isPending ||
+                (stockLimit !== null && item.quantity >= stockLimit)
+              }
               className="w-9 h-9 flex items-center justify-center text-gray-500 hover:bg-gray-50 active:bg-gray-100 disabled:opacity-30 transition-colors"
             >
               <Plus className="h-3.5 w-3.5" />

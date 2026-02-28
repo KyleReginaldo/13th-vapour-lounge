@@ -31,6 +31,15 @@ interface DashboardStatsProps {
     todaySales: number;
     totalOrders: number;
     averageOrderValue: number;
+    recentActivity: Array<{
+      id: string;
+      title: string;
+      message: string;
+      type: string;
+      created_at: string | null;
+      is_read: boolean | null;
+      link: string | null;
+    }>;
   };
   userName: string;
   isAdmin?: boolean;

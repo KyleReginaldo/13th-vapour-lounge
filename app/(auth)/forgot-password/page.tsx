@@ -1,8 +1,9 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 import {
   sendPasswordResetOtp,
   updatePassword,
@@ -12,8 +13,6 @@ import {
   AlertCircle,
   ArrowLeft,
   CheckCircle,
-  Eye,
-  EyeOff,
   KeyRound,
   Mail,
 } from "lucide-react";
@@ -21,8 +20,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 
-const INPUT_CLS =
-  "h-11 text-[14px] rounded-xl border-[1.5px] border-[#E8E8E8] bg-white placeholder:text-[#CDCDCD] focus-visible:border-[#0A0A0A] focus-visible:ring-0 focus-visible:shadow-[0_0_0_3px_rgba(10,10,10,0.06)] transition-all";
 const BTN_CLS =
   "w-full h-11 text-[14px] font-semibold bg-[#0A0A0A] hover:bg-[#1A1A1A] text-white rounded-xl border-0 shadow-[0_1px_2px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.06)] hover:-translate-y-px hover:shadow-[0_4px_16px_rgba(0,0,0,0.2)] active:translate-y-0 transition-all duration-150 disabled:opacity-60 disabled:cursor-not-allowed disabled:translate-y-0";
 
@@ -35,8 +32,6 @@ export default function ForgotPasswordPage() {
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -161,25 +156,17 @@ export default function ForgotPasswordPage() {
 
               <form className="space-y-5" onSubmit={handleSendOtp}>
                 <div className="space-y-1.5">
-                  <Label
-                    htmlFor="email"
-                    className="text-[13px] font-medium text-[#3D3D3D]"
-                  >
-                    Email address
-                  </Label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#737373]" />
-                    <Input
-                      id="email"
-                      type="email"
-                      autoComplete="email"
-                      required
-                      placeholder="you@example.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className={`${INPUT_CLS} pl-10 pr-4`}
-                    />
-                  </div>
+                  <Label htmlFor="email">Email address</Label>
+                  <IconInput
+                    icon={Mail}
+                    id="email"
+                    type="email"
+                    autoComplete="email"
+                    required
+                    placeholder="you@example.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
                 </div>
 
                 {error && (
@@ -304,67 +291,29 @@ export default function ForgotPasswordPage() {
 
               <form className="space-y-5" onSubmit={handleResetPassword}>
                 <div className="space-y-1.5">
-                  <Label
-                    htmlFor="password"
-                    className="text-[13px] font-medium text-[#3D3D3D]"
-                  >
-                    New password
-                  </Label>
-                  <div className="relative">
-                    <Input
-                      id="password"
-                      type={showPassword ? "text" : "password"}
-                      autoComplete="new-password"
-                      required
-                      placeholder="Min. 8 characters"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className={`${INPUT_CLS} pl-4 pr-10`}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword((v) => !v)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#737373] hover:text-[#1A1A1A] transition-colors"
-                    >
-                      {showPassword ? (
-                        <EyeOff className="h-4 w-4" />
-                      ) : (
-                        <Eye className="h-4 w-4" />
-                      )}
-                    </button>
-                  </div>
+                  <Label htmlFor="password">New password</Label>
+                  <PasswordInput
+                    id="password"
+                    hideIcon
+                    autoComplete="new-password"
+                    required
+                    placeholder="Min. 8 characters"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label
-                    htmlFor="confirmPassword"
-                    className="text-[13px] font-medium text-[#3D3D3D]"
-                  >
-                    Confirm password
-                  </Label>
-                  <div className="relative">
-                    <Input
-                      id="confirmPassword"
-                      type={showConfirm ? "text" : "password"}
-                      autoComplete="new-password"
-                      required
-                      placeholder="Repeat your password"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      className={`${INPUT_CLS} pl-4 pr-10`}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirm((v) => !v)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#737373] hover:text-[#1A1A1A] transition-colors"
-                    >
-                      {showConfirm ? (
-                        <EyeOff className="h-4 w-4" />
-                      ) : (
-                        <Eye className="h-4 w-4" />
-                      )}
-                    </button>
-                  </div>
+                  <Label htmlFor="confirmPassword">Confirm password</Label>
+                  <PasswordInput
+                    id="confirmPassword"
+                    hideIcon
+                    autoComplete="new-password"
+                    required
+                    placeholder="Repeat your password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                  />
                 </div>
 
                 {error && (

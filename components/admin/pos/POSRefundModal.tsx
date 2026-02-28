@@ -336,6 +336,7 @@ export function POSRefundModal({ onRefundComplete }: POSRefundModalProps) {
                                 })
                               }
                               className="h-8"
+                              placeholder="1"
                             />
                           </div>
 

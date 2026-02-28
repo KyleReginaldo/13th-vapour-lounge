@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { Minus, Plus } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 interface QuantityInputProps {
   value: number;
@@ -24,6 +24,10 @@ export const QuantityInput = ({
   className,
 }: QuantityInputProps) => {
   const [inputValue, setInputValue] = useState(value.toString());
+
+  useEffect(() => {
+    setInputValue(value.toString());
+  }, [value]);
 
   const handleDecrement = () => {
     if (value > min) {
@@ -81,6 +85,7 @@ export const QuantityInput = ({
         disabled={disabled}
         className="h-10 w-16 text-center font-medium"
         aria-label="Quantity"
+        placeholder="1"
       />
 
       <Button

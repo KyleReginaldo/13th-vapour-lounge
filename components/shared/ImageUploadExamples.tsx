@@ -119,6 +119,7 @@ export function FormWithImageUploadExample() {
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
           className="w-full px-3 py-2 border rounded"
           required
+          placeholder="Enter name"
         />
       </div>
 
@@ -131,6 +132,7 @@ export function FormWithImageUploadExample() {
           }
           className="w-full px-3 py-2 border rounded"
           rows={3}
+          placeholder="Enter description"
         />
       </div>
 
